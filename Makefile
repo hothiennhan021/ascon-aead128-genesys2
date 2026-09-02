@@ -2,13 +2,16 @@
 # Yeu cau: python, iverilog, vvp, make trong PATH
 # LUU Y: cac dong lenh phai bat dau bang ky tu TAB, khong phai dau cach
 
+SHELL := cmd.exe
+.SHELLFLAGS := /c
+
 PY       := python
 IVERILOG := iverilog
 VVP      := vvp
 
-# TODO: them lai rtl/core/ascon_aead_fsm.v khi module do duoc viet
 RTL_CORE := rtl/core/ascon_sbox.v rtl/core/ascon_linear.v \
-            rtl/core/ascon_round.v rtl/core/ascon_perm.v
+            rtl/core/ascon_round.v rtl/core/ascon_perm.v \
+            rtl/core/ascon_aead_fsm.v
 RTL_IP   := rtl/ip/ascon_apb.v
 BUILD    := build
 KAT      := vectors/LWC_AEAD_KAT_128_128.txt
