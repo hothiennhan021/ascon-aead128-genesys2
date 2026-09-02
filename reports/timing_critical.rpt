@@ -1,0 +1,393 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2022.2 (win64) Build 3671981 Fri Oct 14 05:00:03 MDT 2022
+| Date         : Wed Sep  2 14:57:17 2026
+| Host         : DESKTOP-B2JP29G running 64-bit major release  (build 9200)
+| Command      : report_timing -max_paths 5 -sort_by group -file reports/timing_critical.rpt
+| Design       : ascon_apb
+| Device       : 7a35t-cpg236
+| Speed File   : -1  PRODUCTION 1.23 2018-06-13
+---------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.216ns  (required time - arrival time)
+  Source:                 u_fsm/state_reg[0]_rep__0/C
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Destination:            u_fsm/u_perm/state_reg[223]/D
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Path Group:             pclk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.000ns  (pclk rise@6.000ns - pclk rise@0.000ns)
+  Data Path Delay:        5.777ns  (logic 1.250ns (21.637%)  route 4.527ns (78.363%))
+  Logic Levels:           4  (LUT3=1 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 6.924 - 6.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock pclk rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.973     0.973    u_fsm/pclk
+    SLICE_X8Y109         FDCE                                         r  u_fsm/state_reg[0]_rep__0/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X8Y109         FDCE (Prop_fdce_C_Q)         0.518     1.491 f  u_fsm/state_reg[0]_rep__0/Q
+                         net (fo=121, routed)         1.222     2.713    u_fsm/u_perm/state_reg[0]_3
+    SLICE_X11Y112        LUT3 (Prop_lut3_I1_O)        0.152     2.865 f  u_fsm/u_perm/state[279]_i_3/O
+                         net (fo=250, routed)         0.867     3.732    u_fsm/u_perm/state_reg[2]_rep__0
+    SLICE_X9Y117         LUT4 (Prop_lut4_I0_O)        0.332     4.064 f  u_fsm/u_perm/state[319]_i_9/O
+                         net (fo=28, routed)          1.568     5.633    u_fsm/u_perm/state[319]_i_9_n_0
+    SLICE_X28Y109        LUT5 (Prop_lut5_I0_O)        0.124     5.757 f  u_fsm/u_perm/state[223]_i_4/O
+                         net (fo=7, routed)           0.870     6.626    u_fsm/u_perm/state[223]_i_4_n_0
+    SLICE_X30Y107        LUT6 (Prop_lut6_I3_O)        0.124     6.750 r  u_fsm/u_perm/state[223]_i_1/O
+                         net (fo=1, routed)           0.000     6.750    u_fsm/u_perm/p_1_in[223]
+    SLICE_X30Y107        FDCE                                         r  u_fsm/u_perm/state_reg[223]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock pclk rise edge)       6.000     6.000 r  
+                                                      0.000     6.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.924     6.924    u_fsm/u_perm/pclk
+    SLICE_X30Y107        FDCE                                         r  u_fsm/u_perm/state_reg[223]/C
+                         clock pessimism              0.000     6.924    
+                         clock uncertainty           -0.035     6.889    
+    SLICE_X30Y107        FDCE (Setup_fdce_C_D)        0.077     6.966    u_fsm/u_perm/state_reg[223]
+  -------------------------------------------------------------------
+                         required time                          6.966    
+                         arrival time                          -6.750    
+  -------------------------------------------------------------------
+                         slack                                  0.216    
+
+Slack (MET) :             0.323ns  (required time - arrival time)
+  Source:                 u_fsm/u_perm/state_reg[78]/C
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Destination:            u_fsm/dout_r_reg[109]/CE
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Path Group:             pclk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.000ns  (pclk rise@6.000ns - pclk rise@0.000ns)
+  Data Path Delay:        5.388ns  (logic 2.689ns (49.908%)  route 2.699ns (50.092%))
+  Logic Levels:           13  (CARRY4=10 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 6.924 - 6.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock pclk rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.973     0.973    u_fsm/u_perm/pclk
+    SLICE_X23Y104        FDCE                                         r  u_fsm/u_perm/state_reg[78]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X23Y104        FDCE (Prop_fdce_C_Q)         0.456     1.429 r  u_fsm/u_perm/state_reg[78]/Q
+                         net (fo=11, routed)          1.018     2.447    u_fsm/u_perm/perm_state_o[78]
+    SLICE_X20Y103        LUT6 (Prop_lut6_I3_O)        0.124     2.571 r  u_fsm/u_perm/dout_r[127]_i_95/O
+                         net (fo=1, routed)           0.439     3.010    u_fsm/u_perm/dout_r[127]_i_95_n_0
+    SLICE_X18Y103        LUT4 (Prop_lut4_I0_O)        0.124     3.134 r  u_fsm/u_perm/dout_r[127]_i_83/O
+                         net (fo=1, routed)           0.000     3.134    u_fsm/u_perm/dout_r[127]_i_83_n_0
+    SLICE_X18Y103        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     3.666 r  u_fsm/u_perm/dout_r_reg[127]_i_70/CO[3]
+                         net (fo=1, routed)           0.000     3.666    u_fsm/u_perm/dout_r_reg[127]_i_70_n_0
+    SLICE_X18Y104        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.780 r  u_fsm/u_perm/dout_r_reg[127]_i_61/CO[3]
+                         net (fo=1, routed)           0.000     3.780    u_fsm/u_perm/dout_r_reg[127]_i_61_n_0
+    SLICE_X18Y105        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.894 r  u_fsm/u_perm/dout_r_reg[127]_i_52/CO[3]
+                         net (fo=1, routed)           0.000     3.894    u_fsm/u_perm/dout_r_reg[127]_i_52_n_0
+    SLICE_X18Y106        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.008 r  u_fsm/u_perm/dout_r_reg[127]_i_43/CO[3]
+                         net (fo=1, routed)           0.000     4.008    u_fsm/u_perm/dout_r_reg[127]_i_43_n_0
+    SLICE_X18Y107        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.122 r  u_fsm/u_perm/dout_r_reg[127]_i_34/CO[3]
+                         net (fo=1, routed)           0.000     4.122    u_fsm/u_perm/dout_r_reg[127]_i_34_n_0
+    SLICE_X18Y108        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.236 r  u_fsm/u_perm/dout_r_reg[127]_i_25/CO[3]
+                         net (fo=1, routed)           0.000     4.236    u_fsm/u_perm/dout_r_reg[127]_i_25_n_0
+    SLICE_X18Y109        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.350 r  u_fsm/u_perm/dout_r_reg[127]_i_16/CO[3]
+                         net (fo=1, routed)           0.000     4.350    u_fsm/u_perm/dout_r_reg[127]_i_16_n_0
+    SLICE_X18Y110        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.464 r  u_fsm/u_perm/dout_r_reg[127]_i_9/CO[3]
+                         net (fo=1, routed)           0.000     4.464    u_fsm/u_perm/dout_r_reg[127]_i_9_n_0
+    SLICE_X18Y111        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.578 r  u_fsm/u_perm/dout_r_reg[127]_i_5/CO[3]
+                         net (fo=1, routed)           0.000     4.578    u_fsm/u_perm/dout_r_reg[127]_i_5_n_0
+    SLICE_X18Y112        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.228     4.806 f  u_fsm/u_perm/dout_r_reg[127]_i_4/CO[2]
+                         net (fo=2, routed)           0.416     5.222    u_fsm/next_dout3
+    SLICE_X17Y111        LUT5 (Prop_lut5_I2_O)        0.313     5.535 r  u_fsm/dout_r[127]_i_1/O
+                         net (fo=129, routed)         0.826     6.361    u_fsm/next_dout_valid
+    SLICE_X18Y119        FDCE                                         r  u_fsm/dout_r_reg[109]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock pclk rise edge)       6.000     6.000 r  
+                                                      0.000     6.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.924     6.924    u_fsm/pclk
+    SLICE_X18Y119        FDCE                                         r  u_fsm/dout_r_reg[109]/C
+                         clock pessimism              0.000     6.924    
+                         clock uncertainty           -0.035     6.889    
+    SLICE_X18Y119        FDCE (Setup_fdce_C_CE)      -0.205     6.684    u_fsm/dout_r_reg[109]
+  -------------------------------------------------------------------
+                         required time                          6.684    
+                         arrival time                          -6.361    
+  -------------------------------------------------------------------
+                         slack                                  0.323    
+
+Slack (MET) :             0.323ns  (required time - arrival time)
+  Source:                 u_fsm/u_perm/state_reg[78]/C
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Destination:            u_fsm/dout_r_reg[110]/CE
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Path Group:             pclk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.000ns  (pclk rise@6.000ns - pclk rise@0.000ns)
+  Data Path Delay:        5.388ns  (logic 2.689ns (49.908%)  route 2.699ns (50.092%))
+  Logic Levels:           13  (CARRY4=10 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 6.924 - 6.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock pclk rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.973     0.973    u_fsm/u_perm/pclk
+    SLICE_X23Y104        FDCE                                         r  u_fsm/u_perm/state_reg[78]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X23Y104        FDCE (Prop_fdce_C_Q)         0.456     1.429 r  u_fsm/u_perm/state_reg[78]/Q
+                         net (fo=11, routed)          1.018     2.447    u_fsm/u_perm/perm_state_o[78]
+    SLICE_X20Y103        LUT6 (Prop_lut6_I3_O)        0.124     2.571 r  u_fsm/u_perm/dout_r[127]_i_95/O
+                         net (fo=1, routed)           0.439     3.010    u_fsm/u_perm/dout_r[127]_i_95_n_0
+    SLICE_X18Y103        LUT4 (Prop_lut4_I0_O)        0.124     3.134 r  u_fsm/u_perm/dout_r[127]_i_83/O
+                         net (fo=1, routed)           0.000     3.134    u_fsm/u_perm/dout_r[127]_i_83_n_0
+    SLICE_X18Y103        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     3.666 r  u_fsm/u_perm/dout_r_reg[127]_i_70/CO[3]
+                         net (fo=1, routed)           0.000     3.666    u_fsm/u_perm/dout_r_reg[127]_i_70_n_0
+    SLICE_X18Y104        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.780 r  u_fsm/u_perm/dout_r_reg[127]_i_61/CO[3]
+                         net (fo=1, routed)           0.000     3.780    u_fsm/u_perm/dout_r_reg[127]_i_61_n_0
+    SLICE_X18Y105        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.894 r  u_fsm/u_perm/dout_r_reg[127]_i_52/CO[3]
+                         net (fo=1, routed)           0.000     3.894    u_fsm/u_perm/dout_r_reg[127]_i_52_n_0
+    SLICE_X18Y106        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.008 r  u_fsm/u_perm/dout_r_reg[127]_i_43/CO[3]
+                         net (fo=1, routed)           0.000     4.008    u_fsm/u_perm/dout_r_reg[127]_i_43_n_0
+    SLICE_X18Y107        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.122 r  u_fsm/u_perm/dout_r_reg[127]_i_34/CO[3]
+                         net (fo=1, routed)           0.000     4.122    u_fsm/u_perm/dout_r_reg[127]_i_34_n_0
+    SLICE_X18Y108        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.236 r  u_fsm/u_perm/dout_r_reg[127]_i_25/CO[3]
+                         net (fo=1, routed)           0.000     4.236    u_fsm/u_perm/dout_r_reg[127]_i_25_n_0
+    SLICE_X18Y109        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.350 r  u_fsm/u_perm/dout_r_reg[127]_i_16/CO[3]
+                         net (fo=1, routed)           0.000     4.350    u_fsm/u_perm/dout_r_reg[127]_i_16_n_0
+    SLICE_X18Y110        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.464 r  u_fsm/u_perm/dout_r_reg[127]_i_9/CO[3]
+                         net (fo=1, routed)           0.000     4.464    u_fsm/u_perm/dout_r_reg[127]_i_9_n_0
+    SLICE_X18Y111        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.578 r  u_fsm/u_perm/dout_r_reg[127]_i_5/CO[3]
+                         net (fo=1, routed)           0.000     4.578    u_fsm/u_perm/dout_r_reg[127]_i_5_n_0
+    SLICE_X18Y112        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.228     4.806 f  u_fsm/u_perm/dout_r_reg[127]_i_4/CO[2]
+                         net (fo=2, routed)           0.416     5.222    u_fsm/next_dout3
+    SLICE_X17Y111        LUT5 (Prop_lut5_I2_O)        0.313     5.535 r  u_fsm/dout_r[127]_i_1/O
+                         net (fo=129, routed)         0.826     6.361    u_fsm/next_dout_valid
+    SLICE_X18Y119        FDCE                                         r  u_fsm/dout_r_reg[110]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock pclk rise edge)       6.000     6.000 r  
+                                                      0.000     6.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.924     6.924    u_fsm/pclk
+    SLICE_X18Y119        FDCE                                         r  u_fsm/dout_r_reg[110]/C
+                         clock pessimism              0.000     6.924    
+                         clock uncertainty           -0.035     6.889    
+    SLICE_X18Y119        FDCE (Setup_fdce_C_CE)      -0.205     6.684    u_fsm/dout_r_reg[110]
+  -------------------------------------------------------------------
+                         required time                          6.684    
+                         arrival time                          -6.361    
+  -------------------------------------------------------------------
+                         slack                                  0.323    
+
+Slack (MET) :             0.323ns  (required time - arrival time)
+  Source:                 u_fsm/u_perm/state_reg[78]/C
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Destination:            u_fsm/dout_r_reg[121]/CE
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Path Group:             pclk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.000ns  (pclk rise@6.000ns - pclk rise@0.000ns)
+  Data Path Delay:        5.388ns  (logic 2.689ns (49.908%)  route 2.699ns (50.092%))
+  Logic Levels:           13  (CARRY4=10 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 6.924 - 6.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock pclk rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.973     0.973    u_fsm/u_perm/pclk
+    SLICE_X23Y104        FDCE                                         r  u_fsm/u_perm/state_reg[78]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X23Y104        FDCE (Prop_fdce_C_Q)         0.456     1.429 r  u_fsm/u_perm/state_reg[78]/Q
+                         net (fo=11, routed)          1.018     2.447    u_fsm/u_perm/perm_state_o[78]
+    SLICE_X20Y103        LUT6 (Prop_lut6_I3_O)        0.124     2.571 r  u_fsm/u_perm/dout_r[127]_i_95/O
+                         net (fo=1, routed)           0.439     3.010    u_fsm/u_perm/dout_r[127]_i_95_n_0
+    SLICE_X18Y103        LUT4 (Prop_lut4_I0_O)        0.124     3.134 r  u_fsm/u_perm/dout_r[127]_i_83/O
+                         net (fo=1, routed)           0.000     3.134    u_fsm/u_perm/dout_r[127]_i_83_n_0
+    SLICE_X18Y103        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     3.666 r  u_fsm/u_perm/dout_r_reg[127]_i_70/CO[3]
+                         net (fo=1, routed)           0.000     3.666    u_fsm/u_perm/dout_r_reg[127]_i_70_n_0
+    SLICE_X18Y104        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.780 r  u_fsm/u_perm/dout_r_reg[127]_i_61/CO[3]
+                         net (fo=1, routed)           0.000     3.780    u_fsm/u_perm/dout_r_reg[127]_i_61_n_0
+    SLICE_X18Y105        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.894 r  u_fsm/u_perm/dout_r_reg[127]_i_52/CO[3]
+                         net (fo=1, routed)           0.000     3.894    u_fsm/u_perm/dout_r_reg[127]_i_52_n_0
+    SLICE_X18Y106        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.008 r  u_fsm/u_perm/dout_r_reg[127]_i_43/CO[3]
+                         net (fo=1, routed)           0.000     4.008    u_fsm/u_perm/dout_r_reg[127]_i_43_n_0
+    SLICE_X18Y107        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.122 r  u_fsm/u_perm/dout_r_reg[127]_i_34/CO[3]
+                         net (fo=1, routed)           0.000     4.122    u_fsm/u_perm/dout_r_reg[127]_i_34_n_0
+    SLICE_X18Y108        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.236 r  u_fsm/u_perm/dout_r_reg[127]_i_25/CO[3]
+                         net (fo=1, routed)           0.000     4.236    u_fsm/u_perm/dout_r_reg[127]_i_25_n_0
+    SLICE_X18Y109        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.350 r  u_fsm/u_perm/dout_r_reg[127]_i_16/CO[3]
+                         net (fo=1, routed)           0.000     4.350    u_fsm/u_perm/dout_r_reg[127]_i_16_n_0
+    SLICE_X18Y110        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.464 r  u_fsm/u_perm/dout_r_reg[127]_i_9/CO[3]
+                         net (fo=1, routed)           0.000     4.464    u_fsm/u_perm/dout_r_reg[127]_i_9_n_0
+    SLICE_X18Y111        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.578 r  u_fsm/u_perm/dout_r_reg[127]_i_5/CO[3]
+                         net (fo=1, routed)           0.000     4.578    u_fsm/u_perm/dout_r_reg[127]_i_5_n_0
+    SLICE_X18Y112        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.228     4.806 f  u_fsm/u_perm/dout_r_reg[127]_i_4/CO[2]
+                         net (fo=2, routed)           0.416     5.222    u_fsm/next_dout3
+    SLICE_X17Y111        LUT5 (Prop_lut5_I2_O)        0.313     5.535 r  u_fsm/dout_r[127]_i_1/O
+                         net (fo=129, routed)         0.826     6.361    u_fsm/next_dout_valid
+    SLICE_X18Y117        FDCE                                         r  u_fsm/dout_r_reg[121]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock pclk rise edge)       6.000     6.000 r  
+                                                      0.000     6.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.924     6.924    u_fsm/pclk
+    SLICE_X18Y117        FDCE                                         r  u_fsm/dout_r_reg[121]/C
+                         clock pessimism              0.000     6.924    
+                         clock uncertainty           -0.035     6.889    
+    SLICE_X18Y117        FDCE (Setup_fdce_C_CE)      -0.205     6.684    u_fsm/dout_r_reg[121]
+  -------------------------------------------------------------------
+                         required time                          6.684    
+                         arrival time                          -6.361    
+  -------------------------------------------------------------------
+                         slack                                  0.323    
+
+Slack (MET) :             0.323ns  (required time - arrival time)
+  Source:                 u_fsm/u_perm/state_reg[78]/C
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Destination:            u_fsm/dout_r_reg[122]/CE
+                            (rising edge-triggered cell FDCE clocked by pclk  {rise@0.000ns fall@3.000ns period=6.000ns})
+  Path Group:             pclk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            6.000ns  (pclk rise@6.000ns - pclk rise@0.000ns)
+  Data Path Delay:        5.388ns  (logic 2.689ns (49.908%)  route 2.699ns (50.092%))
+  Logic Levels:           13  (CARRY4=10 LUT4=1 LUT5=1 LUT6=1)
+  Clock Path Skew:        -0.049ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.924ns = ( 6.924 - 6.000 ) 
+    Source Clock Delay      (SCD):    0.973ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock pclk rise edge)       0.000     0.000 r  
+                                                      0.000     0.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.973     0.973    u_fsm/u_perm/pclk
+    SLICE_X23Y104        FDCE                                         r  u_fsm/u_perm/state_reg[78]/C
+  -------------------------------------------------------------------    -------------------
+    SLICE_X23Y104        FDCE (Prop_fdce_C_Q)         0.456     1.429 r  u_fsm/u_perm/state_reg[78]/Q
+                         net (fo=11, routed)          1.018     2.447    u_fsm/u_perm/perm_state_o[78]
+    SLICE_X20Y103        LUT6 (Prop_lut6_I3_O)        0.124     2.571 r  u_fsm/u_perm/dout_r[127]_i_95/O
+                         net (fo=1, routed)           0.439     3.010    u_fsm/u_perm/dout_r[127]_i_95_n_0
+    SLICE_X18Y103        LUT4 (Prop_lut4_I0_O)        0.124     3.134 r  u_fsm/u_perm/dout_r[127]_i_83/O
+                         net (fo=1, routed)           0.000     3.134    u_fsm/u_perm/dout_r[127]_i_83_n_0
+    SLICE_X18Y103        CARRY4 (Prop_carry4_S[0]_CO[3])
+                                                      0.532     3.666 r  u_fsm/u_perm/dout_r_reg[127]_i_70/CO[3]
+                         net (fo=1, routed)           0.000     3.666    u_fsm/u_perm/dout_r_reg[127]_i_70_n_0
+    SLICE_X18Y104        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.780 r  u_fsm/u_perm/dout_r_reg[127]_i_61/CO[3]
+                         net (fo=1, routed)           0.000     3.780    u_fsm/u_perm/dout_r_reg[127]_i_61_n_0
+    SLICE_X18Y105        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     3.894 r  u_fsm/u_perm/dout_r_reg[127]_i_52/CO[3]
+                         net (fo=1, routed)           0.000     3.894    u_fsm/u_perm/dout_r_reg[127]_i_52_n_0
+    SLICE_X18Y106        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.008 r  u_fsm/u_perm/dout_r_reg[127]_i_43/CO[3]
+                         net (fo=1, routed)           0.000     4.008    u_fsm/u_perm/dout_r_reg[127]_i_43_n_0
+    SLICE_X18Y107        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.122 r  u_fsm/u_perm/dout_r_reg[127]_i_34/CO[3]
+                         net (fo=1, routed)           0.000     4.122    u_fsm/u_perm/dout_r_reg[127]_i_34_n_0
+    SLICE_X18Y108        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.236 r  u_fsm/u_perm/dout_r_reg[127]_i_25/CO[3]
+                         net (fo=1, routed)           0.000     4.236    u_fsm/u_perm/dout_r_reg[127]_i_25_n_0
+    SLICE_X18Y109        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.350 r  u_fsm/u_perm/dout_r_reg[127]_i_16/CO[3]
+                         net (fo=1, routed)           0.000     4.350    u_fsm/u_perm/dout_r_reg[127]_i_16_n_0
+    SLICE_X18Y110        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.464 r  u_fsm/u_perm/dout_r_reg[127]_i_9/CO[3]
+                         net (fo=1, routed)           0.000     4.464    u_fsm/u_perm/dout_r_reg[127]_i_9_n_0
+    SLICE_X18Y111        CARRY4 (Prop_carry4_CI_CO[3])
+                                                      0.114     4.578 r  u_fsm/u_perm/dout_r_reg[127]_i_5/CO[3]
+                         net (fo=1, routed)           0.000     4.578    u_fsm/u_perm/dout_r_reg[127]_i_5_n_0
+    SLICE_X18Y112        CARRY4 (Prop_carry4_CI_CO[2])
+                                                      0.228     4.806 f  u_fsm/u_perm/dout_r_reg[127]_i_4/CO[2]
+                         net (fo=2, routed)           0.416     5.222    u_fsm/next_dout3
+    SLICE_X17Y111        LUT5 (Prop_lut5_I2_O)        0.313     5.535 r  u_fsm/dout_r[127]_i_1/O
+                         net (fo=129, routed)         0.826     6.361    u_fsm/next_dout_valid
+    SLICE_X18Y117        FDCE                                         r  u_fsm/dout_r_reg[122]/CE
+  -------------------------------------------------------------------    -------------------
+
+                         (clock pclk rise edge)       6.000     6.000 r  
+                                                      0.000     6.000 r  pclk (IN)
+                         net (fo=1519, unset)         0.924     6.924    u_fsm/pclk
+    SLICE_X18Y117        FDCE                                         r  u_fsm/dout_r_reg[122]/C
+                         clock pessimism              0.000     6.924    
+                         clock uncertainty           -0.035     6.889    
+    SLICE_X18Y117        FDCE (Setup_fdce_C_CE)      -0.205     6.684    u_fsm/dout_r_reg[122]
+  -------------------------------------------------------------------
+                         required time                          6.684    
+                         arrival time                          -6.361    
+  -------------------------------------------------------------------
+                         slack                                  0.323    
+
+
+
+

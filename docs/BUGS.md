@@ -32,3 +32,70 @@ trạng thái FSM (`docs/uarch.md`) trước khi viết RTL — không thể tr�
 chờ đọc lại đặc tả khi coding sẽ tự nhớ ra. Test âm (cố tình phá dữ
 liệu để xác nhận cơ chế an toàn kích hoạt) cần được viết chủ động, vì
 test dương (KAT hợp lệ) không bao giờ chạm tới nhánh `tag_fail=1`.
+
+---
+
+## 2026-09-02 — Chuỗi CARRY4 ngoài ý muốn trên dout_r (ascon_aead_fsm)
+
+**Triệu chứng:** Báo cáo timing (`reports/timing_critical.rpt`, một
+lần chạy `sweep_fmax.tcl` trước đó ở period=6.000 ns) cho thấy đường
+tới hạn thứ hai đi qua 10 khối `CARRY4` nối tiếp
+(`u_fsm/u_perm/dout_r_reg[127]_i_*`), tạo chuỗi carry ~40 bit feed vào
+`dout_r`. Ascon không có phép toán số học nào — đây là mạch phát sinh
+ngoài ý muốn từ logic đệm byte theo `valid_bytes` trong
+`f_enc_rate`/`f_dec_rate` (khi đó viết bằng vòng `for` so sánh
+`k == vbytes` / `k > vbytes` / `k < vbytes`).
+
+**Cách phát hiện:** Đọc lại `reports/timing_critical.rpt` đã có sẵn từ
+lần chạy `make impl` trước đó (không phải tạo mới trong phiên này).
+
+**Đã thử và kết quả — bằng `make synth` thật (Vivado 2022.2 có sẵn tại
+`C:\Xilinx\Vivado\2022.2`), không chỉ suy luận:**
+
+| Cách thử | Slice LUTs | CARRY4 | Kết quả |
+|---|---|---|---|
+| Gốc (vòng `for` so sánh `k <op> vbytes`) | 1824 | 11 | baseline |
+| `case` xây mảng mặt nạ (bit i = i<vbytes) rồi AND/OR với dữ liệu | 1702 | 11 | LUT giảm, CARRY4 không đổi |
+| `case` 17 nhánh viết thẳng kết quả 128 bit bằng dải bit hằng số (không còn mặt nạ trung gian, không còn toán tử `<`/`>` nào trong file) | 1566 | 11 | LUT giảm tiếp, CARRY4 **vẫn không đổi** |
+| Thêm `(* use_carry = "no" *)` trên `dout_r`, `next_dout`, `rate_new`, `perm_state_i`, thanh ghi `state` trong `ascon_perm` | 1566 | 11 | Không đổi gì |
+| Thêm cả `(* dont_touch = "true" *)` trên `rate_new` | 1566 | 11 | Không đổi gì |
+| `synth_design ... -resource_sharing off` | 1566 | 11 | Không đổi gì |
+| `(* use_carry = "no" *)` đặt ở mức module | 1566 | 11 | Không đổi gì |
+
+**Phát hiện bằng cách chia đôi (bisect) trên bản sao file:** xóa hẳn
+phép so sánh `next_tag != tag_in` (128 bit, ở `S_FIN_TAGXOR`, dùng để
+tính `tag_fail`) — dù **không đụng gì tới** `f_enc_rate`/`f_dec_rate`
+— thì chuỗi CARRY4 trên `dout_r` **biến mất hoàn toàn** (0 CARRY4).
+Phục hồi lại phép so sánh thì chuỗi quay lại y hệt, dù đã gắn
+`use_carry=no` riêng cho `tag_r`/`next_tag`/`tag_fail_r`/`next_tag_fail`.
+Test cô lập (module tối giản, không có `ascon_apb`/`ascon_perm`) xác
+nhận `case` 17-nhánh + `use_carry=no` hoạt động đúng như kỳ vọng khi
+đứng một mình (0 CARRY4) — vấn đề chỉ xuất hiện khi phép so sánh tag
+128 bit cùng tồn tại trong cùng module.
+
+**Kết luận:** Nguyên nhân gốc chưa được giải quyết triệt để. Việc viết
+lại bằng `case`/bảng tra là đúng hướng và có lợi thật (giảm LUT
+1824→1566, tương đương 14%, code cũng rõ ràng/dễ kiểm hơn hẳn), nhưng
+tự nó **không đủ** để loại chuỗi CARRY4 — Vivado 2022.2 rõ ràng đang
+chia sẻ hạ tầng carry-chain giữa phép so sánh tag hợp lệ (128 bit,
+không tránh được) và mux đệm byte của `dout_r`, theo cách không điều
+khiển được bằng các đòn bẩy RTL/synth thông thường đã thử ở trên.
+Không giữ lại các thuộc tính `use_carry`/`dont_touch` trong RTL vì đã
+xác nhận chúng không có tác dụng — giữ lại code "trông như đã sửa"
+nhưng thực ra vô hiệu còn tệ hơn không viết gì.
+
+**Việc còn để lại:** Kiểm `reports/timing_critical.rpt`/chạy lại
+`sweep_fmax.tcl` để xem chuỗi CARRY4 hiện tại có thực sự vi phạm timing
+ở tần số mục tiêu hay không (báo cáo cũ cho thấy path này **vẫn đạt**
+slack dương ở period=6 ns) trước khi đầu tư thêm công sức; nếu cần xử
+lý tiếp, hướng khả thi nhất là tách vật lý phép so sánh tag ra một
+module/instance riêng (không cùng always-block hay file) để phá vỡ cơ
+hội chia sẻ tài nguyên của Vivado, hoặc hỏi hỗ trợ Xilinx.
+
+**Bài học:** Với Vivado Synth_8, viết lại RTL bằng `case` thay vì toán
+tử so sánh **không đảm bảo** đổi được lựa chọn công nghệ ánh xạ, vì
+công cụ chuẩn hóa RTL về mạng Boolean trước khi tối ưu — hai cách viết
+tính ra cùng một hàm thì thường ra cùng một mạch, bất kể cú pháp
+nguồn. Luôn đo bằng `report_utilization`/tên cell CARRY4 thật sau mỗi
+lần sửa, đừng suy luận rồi báo cáo cải thiện dựa trên "về lý thuyết
+phải đúng".

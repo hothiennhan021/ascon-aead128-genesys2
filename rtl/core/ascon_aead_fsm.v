@@ -98,23 +98,56 @@ module ascon_aead_fsm (
     // byte k < valid_bytes -> real data; byte k == valid_bytes -> 0x01
     // pad marker; byte k > valid_bytes -> unchanged. Only applied when
     // is_last=1; non-last blocks are always full 16-byte XOR/overwrite.
+    //
+    // Rewritten as a flat `case` on valid_bytes (17 branches, 0..16):
+    // each branch concatenates the final 128-bit result directly from
+    // literal bit ranges, so there is no `<`/`>` comparison operator in
+    // this file and no reusable "is byte i before the boundary" signal
+    // for a technology mapper to recognize as a magnitude compare. This
+    // did shrink the design (1824 -> 1566 LUTs on xc7a35tcpg236-1, see
+    // docs/BUGS.md) but did NOT remove the 11-CARRY4 chain on dout_r
+    // that motivated the rewrite -- that turned out to depend on the
+    // unrelated 128-bit tag comparison in S_FIN_TAGXOR (next_tag !=
+    // tag_in) being present elsewhere in the same module; removing only
+    // that comparison (independently of this rewrite) also removed the
+    // chain. Per-signal and per-module `(* use_carry = "no" *)`,
+    // `dont_touch`, and `synth_design -resource_sharing off` were all
+    // tried and did not break that interaction (see docs/BUGS.md for
+    // the full record). Root cause not resolved; documented rather than
+    // masked with attributes that were confirmed ineffective.
 
     function [127:0] f_enc_rate;
         input [127:0] rate_old;
         input [127:0] d;
         input         is_last;
         input [4:0]   vbytes;
-        integer k;
+        reg [127:0] full_xor;
         reg [127:0] result;
         begin
-            result = rate_old ^ d;
-            if (is_last) begin
-                for (k = 0; k < 16; k = k + 1) begin
-                    if (k == vbytes)
-                        result[8*k +: 8] = rate_old[8*k +: 8] ^ 8'h01;
-                    else if (k > vbytes)
-                        result[8*k +: 8] = rate_old[8*k +: 8];
-                end
+            full_xor = rate_old ^ d;
+            if (!is_last) begin
+                result = full_xor;
+            end else begin
+                case (vbytes)
+                    5'd0:    result = { rate_old[127:8],                                     rate_old[7:0]    ^ 8'h01 };
+                    5'd1:    result = { rate_old[127:16],  rate_old[15:8]   ^ 8'h01, full_xor[7:0]   };
+                    5'd2:    result = { rate_old[127:24],  rate_old[23:16]  ^ 8'h01, full_xor[15:0]  };
+                    5'd3:    result = { rate_old[127:32],  rate_old[31:24]  ^ 8'h01, full_xor[23:0]  };
+                    5'd4:    result = { rate_old[127:40],  rate_old[39:32]  ^ 8'h01, full_xor[31:0]  };
+                    5'd5:    result = { rate_old[127:48],  rate_old[47:40]  ^ 8'h01, full_xor[39:0]  };
+                    5'd6:    result = { rate_old[127:56],  rate_old[55:48]  ^ 8'h01, full_xor[47:0]  };
+                    5'd7:    result = { rate_old[127:64],  rate_old[63:56]  ^ 8'h01, full_xor[55:0]  };
+                    5'd8:    result = { rate_old[127:72],  rate_old[71:64]  ^ 8'h01, full_xor[63:0]  };
+                    5'd9:    result = { rate_old[127:80],  rate_old[79:72]  ^ 8'h01, full_xor[71:0]  };
+                    5'd10:   result = { rate_old[127:88],  rate_old[87:80]  ^ 8'h01, full_xor[79:0]  };
+                    5'd11:   result = { rate_old[127:96],  rate_old[95:88]  ^ 8'h01, full_xor[87:0]  };
+                    5'd12:   result = { rate_old[127:104], rate_old[103:96] ^ 8'h01, full_xor[95:0]  };
+                    5'd13:   result = { rate_old[127:112], rate_old[111:104]^ 8'h01, full_xor[103:0] };
+                    5'd14:   result = { rate_old[127:120], rate_old[119:112]^ 8'h01, full_xor[111:0] };
+                    5'd15:   result = { rate_old[127:120] ^ 8'h01,                   full_xor[119:0] };
+                    5'd16:   result = full_xor;
+                    default: result = full_xor;
+                endcase
             end
             f_enc_rate = result;
         end
@@ -125,19 +158,31 @@ module ascon_aead_fsm (
         input [127:0] d;
         input         is_last;
         input [4:0]   vbytes;
-        integer k;
         reg [127:0] result;
         begin
             if (!is_last) begin
                 result = d;
             end else begin
-                result = rate_old;
-                for (k = 0; k < 16; k = k + 1) begin
-                    if (k < vbytes)
-                        result[8*k +: 8] = d[8*k +: 8];
-                    else if (k == vbytes)
-                        result[8*k +: 8] = rate_old[8*k +: 8] ^ 8'h01;
-                end
+                case (vbytes)
+                    5'd0:    result = { rate_old[127:8],                                     rate_old[7:0]    ^ 8'h01 };
+                    5'd1:    result = { rate_old[127:16],  rate_old[15:8]   ^ 8'h01, d[7:0]   };
+                    5'd2:    result = { rate_old[127:24],  rate_old[23:16]  ^ 8'h01, d[15:0]  };
+                    5'd3:    result = { rate_old[127:32],  rate_old[31:24]  ^ 8'h01, d[23:0]  };
+                    5'd4:    result = { rate_old[127:40],  rate_old[39:32]  ^ 8'h01, d[31:0]  };
+                    5'd5:    result = { rate_old[127:48],  rate_old[47:40]  ^ 8'h01, d[39:0]  };
+                    5'd6:    result = { rate_old[127:56],  rate_old[55:48]  ^ 8'h01, d[47:0]  };
+                    5'd7:    result = { rate_old[127:64],  rate_old[63:56]  ^ 8'h01, d[55:0]  };
+                    5'd8:    result = { rate_old[127:72],  rate_old[71:64]  ^ 8'h01, d[63:0]  };
+                    5'd9:    result = { rate_old[127:80],  rate_old[79:72]  ^ 8'h01, d[71:0]  };
+                    5'd10:   result = { rate_old[127:88],  rate_old[87:80]  ^ 8'h01, d[79:0]  };
+                    5'd11:   result = { rate_old[127:96],  rate_old[95:88]  ^ 8'h01, d[87:0]  };
+                    5'd12:   result = { rate_old[127:104], rate_old[103:96] ^ 8'h01, d[95:0]  };
+                    5'd13:   result = { rate_old[127:112], rate_old[111:104]^ 8'h01, d[103:0] };
+                    5'd14:   result = { rate_old[127:120], rate_old[119:112]^ 8'h01, d[111:0] };
+                    5'd15:   result = { rate_old[127:120] ^ 8'h01,                   d[119:0] };
+                    5'd16:   result = d;
+                    default: result = d;
+                endcase
             end
             f_dec_rate = result;
         end

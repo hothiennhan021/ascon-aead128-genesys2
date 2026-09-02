@@ -64,8 +64,8 @@ regress: unit kat
 synth:
 	vivado -mode batch -source scripts/synth_ooc.tcl
 
-# --- Buoc 7: implement va quet Fmax ---
-impl:
+# --- Buoc 7: implement va quet Fmax (can co reports/post_synth.dcp) ---
+impl: synth
 	vivado -mode batch -source scripts/sweep_fmax.tcl
 
 # --- Buoc 8: do cong suat ---

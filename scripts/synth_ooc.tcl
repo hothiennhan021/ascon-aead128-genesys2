@@ -26,6 +26,9 @@ read_xdc $xdc_file
 synth_design -top $top_module -part $part_name -mode out_of_context
 
 report_utilization -file [file join $report_dir report_utilization.rpt]
+# -hierarchical: tach rieng tai nguyen cua u_fsm (rtl/core/) khoi
+# phan giao dien APB (rtl/ip/ascon_apb.v) trong cung mot bao cao.
+report_utilization -hierarchical -file [file join $report_dir report_utilization_hierarchical.rpt]
 write_checkpoint -force [file join $report_dir post_synth.dcp]
 
 puts "=== SYNTH OOC DONE: $top_module tren $part_name ==="

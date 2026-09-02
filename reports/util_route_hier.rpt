@@ -1,0 +1,33 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2022.2 (win64) Build 3671981 Fri Oct 14 05:00:03 MDT 2022
+| Date         : Wed Sep  2 14:57:17 2026
+| Host         : DESKTOP-B2JP29G running 64-bit major release  (build 9200)
+| Command      : report_utilization -hierarchical -file reports/util_route_hier.rpt
+| Design       : ascon_apb
+| Device       : xc7a35tcpg236-1
+| Speed File   : -1
+| Design State : Routed
+------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------+----------------+------------+------------+---------+------+------+--------+--------+------------+
+|    Instance   |     Module     | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++---------------+----------------+------------+------------+---------+------+------+--------+--------+------------+
+| ascon_apb     |          (top) |       1822 |       1822 |       0 |    0 | 1520 |      0 |      0 |          0 |
+|   (ascon_apb) |          (top) |        120 |        120 |       0 |    0 |  785 |      0 |      0 |          0 |
+|   u_fsm       | ascon_aead_fsm |       1704 |       1704 |       0 |    0 |  735 |      0 |      0 |          0 |
+|     (u_fsm)   | ascon_aead_fsm |         32 |         32 |       0 |    0 |  409 |      0 |      0 |          0 |
+|     u_perm    |     ascon_perm |       1675 |       1675 |       0 |    0 |  326 |      0 |      0 |          0 |
++---------------+----------------+------------+------------+---------+------+------+--------+--------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+
+
