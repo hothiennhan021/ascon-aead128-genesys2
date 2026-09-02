@@ -19,7 +19,7 @@
 //      confirm tag_fail asserts, and that the DUT never reveals the
 //      final PROC_TEXT block's DOUT (neither at the block's own
 //      PROC_TEXT command nor, on failure, after FINAL) -- per
-//      docs/spec.md 8.5.
+//      docs/spec.md 9.5.
 
 `timescale 1ns/1ps
 

@@ -66,16 +66,30 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 ---
 
-## 5. Giao diện tín hiệu
+## 5. Môi trường phát triển
 
-### 5.1. Tín hiệu hệ thống
+| Hạng mục | Giá trị |
+|---|---|
+| Công cụ tổng hợp | Vivado 2022.2 (64-bit) |
+| Thiết bị đích | `xc7a35tcpg236-1` — Artix-7, board Basys 3 |
+| Speed grade | `-1` |
+| Chế độ tổng hợp | Out-of-Context (OOC) |
+| Công cụ mô phỏng | Icarus Verilog 14.0 |
+
+**Ghi chú:** Speed grade `-1` là mức **chậm nhất** trong họ Artix-7 (các mức nhanh hơn là `-2`, `-3`). Vì vậy Fmax báo cáo được từ bước quét timing (bước 7 trong quy trình làm việc) là con số **bảo thủ** — cùng một thiết kế trên chip tốc độ cao hơn trong cùng họ sẽ đạt Fmax cao hơn số đo được ở đây.
+
+---
+
+## 6. Giao diện tín hiệu
+
+### 6.1. Tín hiệu hệ thống
 
 | Tên | Chiều | Rộng | Mô tả |
 |---|---|---|---|
 | `pclk` | vào | 1 | Xung nhịp hệ thống |
 | `presetn` | vào | 1 | Reset bất đồng bộ, tích cực mức thấp |
 
-### 5.2. Tín hiệu APB slave
+### 6.2. Tín hiệu APB slave
 
 | Tên | Chiều | Rộng | Mô tả |
 |---|---|---|---|
@@ -90,14 +104,14 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 ---
 
-## 6. Register map
+## 7. Register map
 
 Địa chỉ tính theo byte, mọi thanh ghi rộng 32 bit và căn theo từ.
 
 | Offset | Tên | R/W | Mô tả |
 |---|---|---|---|
-| `0x00` | `CMD` | W | Thanh ghi lệnh — xem 6.1 |
-| `0x04` | `STATUS` | R | Thanh ghi trạng thái — xem 6.2 |
+| `0x00` | `CMD` | W | Thanh ghi lệnh — xem 7.1 |
+| `0x04` | `STATUS` | R | Thanh ghi trạng thái — xem 7.2 |
 | `0x10`–`0x1C` | `KEY0`–`KEY3` | W | Khóa 128 bit. **Chỉ ghi**, đọc trả về 0 |
 | `0x20`–`0x2C` | `NONCE0`–`NONCE3` | W | Nonce 128 bit |
 | `0x30`–`0x3C` | `DIN0`–`DIN3` | W | Khối dữ liệu vào 128 bit |
@@ -107,7 +121,7 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 **Quy ước thứ tự từ:** với mọi trường 128 bit, thanh ghi chỉ số 0 chứa 32 bit **có trọng số thấp nhất**. Ví dụ khóa `K` gồm 16 byte `k[0..15]` thì `KEY0 = {k[3],k[2],k[1],k[0]}`.
 
-### 6.1. Thanh ghi CMD (0x00, chỉ ghi)
+### 7.1. Thanh ghi CMD (0x00, chỉ ghi)
 
 | Bit | Tên | Mô tả |
 |---|---|---|
@@ -119,7 +133,7 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng và tự động xóa cờ `done`.
 
-### 6.2. Thanh ghi STATUS (0x04, chỉ đọc)
+### 7.2. Thanh ghi STATUS (0x04, chỉ đọc)
 
 | Bit | Tên | Mô tả |
 |---|---|---|
@@ -132,9 +146,9 @@ Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng 
 
 ---
 
-## 7. Trình tự thao tác
+## 8. Trình tự thao tác
 
-### 7.1. Mã hóa
+### 8.1. Mã hóa
 
 ```
 1. Ghi KEY0..KEY3, NONCE0..NONCE3
@@ -157,14 +171,14 @@ Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng 
    Đọc TAG0..TAG3
 ```
 
-### 7.2. Giải mã
+### 8.2. Giải mã
 
 Giống hệt trình tự trên với `mode = 1`, thêm hai khác biệt:
 
 - Trước khi ghi `CMD = FINAL`, phải ghi `TAGIN0..TAGIN3` là tag nhận được
 - Sau `FINAL`, kiểm tra `STATUS.tag_fail`. Nếu bằng 1 thì **hủy toàn bộ bản rõ đã đọc ra**
 
-### 7.3. Hai trường hợp biên bắt buộc xử lý đúng
+### 8.3. Hai trường hợp biên bắt buộc xử lý đúng
 
 | Trường hợp | Hành vi đúng |
 |---|---|
@@ -173,25 +187,25 @@ Giống hệt trình tự trên với `mode = 1`, thêm hai khác biệt:
 
 ---
 
-## 8. Quyết định thiết kế và lý do
+## 9. Quyết định thiết kế và lý do
 
-### 8.1. Thanh ghi KEY chỉ ghi
+### 9.1. Thanh ghi KEY chỉ ghi
 
 Đọc `KEY0`–`KEY3` luôn trả về 0. Đây là nguyên tắc cơ bản của IP mật mã: không bao giờ để khóa đọc ngược ra qua bus, kể cả bởi phần mềm có đặc quyền.
 
-### 8.2. Dùng opcode thay vì nhiều bit điều khiển rời
+### 9.2. Dùng opcode thay vì nhiều bit điều khiển rời
 
 Thanh ghi `CMD` dùng trường `opcode` 3 bit thay vì các bit `start`, `is_ad`, `is_final` riêng lẻ. Lý do: các thao tác loại trừ lẫn nhau, nên mã hóa thành opcode giúp tránh trạng thái vô nghĩa (ví dụ vừa `is_ad` vừa `is_final`) và giảm số nhánh phải kiểm chứng.
 
-### 8.3. Bus 32 bit, khối 128 bit
+### 9.3. Bus 32 bit, khối 128 bit
 
 Mỗi khối cần bốn lần ghi `DIN`. Lõi đếm số từ đã nhận và đặt `STATUS.din_full = 1` khi đủ bốn. Ghi lệnh xử lý khi `din_full = 0` bị bỏ qua và `pslverr` được kích hoạt.
 
-### 8.4. Trường `valid_bytes` cho logic đệm
+### 9.4. Trường `valid_bytes` cho logic đệm
 
 Vì độ dài dữ liệu tùy ý nên khối cuối có thể lẻ byte. Trường `valid_bytes` cho lõi biết chèn byte `0x01` ở vị trí nào. Giá trị 16 nghĩa là khối đầy đủ và khối đệm sẽ là khối tiếp theo — phần mềm chịu trách nhiệm gửi thêm khối đệm đó theo công thức `số khối = ceil((độ dài + 1) / 16)`.
 
-### 8.5. Hạn chế đã biết — xuất bản rõ trước khi kiểm tra tag
+### 9.5. Hạn chế đã biết — xuất bản rõ trước khi kiểm tra tag
 
 Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra ngay khi có khối bản rõ thứ *i*, và tag chỉ tính được sau khi xử lý hết dữ liệu. Do đó khi giải mã, các khối bản rõ được xuất ra `DOUT` **trước khi** tag được kiểm tra.
 
@@ -206,7 +220,7 @@ Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra
 
 ---
 
-## 9. Phạm vi đồ án
+## 10. Phạm vi đồ án
 
 | Thực hiện | Không thực hiện |
 |---|---|
@@ -220,7 +234,7 @@ Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra
 
 ---
 
-## 10. Tiêu chí nghiệm thu
+## 11. Tiêu chí nghiệm thu
 
 | Mức | Tiêu chí | Cần phần cứng |
 |---|---|---|
@@ -233,7 +247,7 @@ Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra
 
 ---
 
-## 11. Tài liệu tham chiếu
+## 12. Tài liệu tham chiếu
 
 | Ký hiệu | Tài liệu |
 |---|---|

@@ -16,7 +16,7 @@ cho mọi lệnh `PROC_TEXT`, không phân biệt khối cuối lúc giải mã.
 **Nguyên nhân gốc:** `docs/uarch.md` (bảng trạng thái FSM, mục 2) mô tả
 đúng: giải mã xuất `dout` bằng rate *trước khi* bị ghi đè bởi bản mã,
 nhưng không đặc tả rõ việc phải **giữ lại** khối cuối tới khi `FINAL`
-xong — đây là yêu cầu ở `docs/spec.md` mục 8.5 ("Hạn chế đã biết — xuất
+xong — đây là yêu cầu ở `docs/spec.md` mục 9.5 ("Hạn chế đã biết — xuất
 bản rõ trước khi kiểm tra tag"), không được đưa vào bảng trạng thái khi
 viết `ascon_aead_fsm.v` lần đầu.
 

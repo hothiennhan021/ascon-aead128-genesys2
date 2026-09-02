@@ -133,10 +133,10 @@ Ghi chú:
 - `busy` là tổ hợp của "khác `S_IDLE`" (trừ chu kỳ `S_IDLE` không có
   `start`).
 - `done` luôn là **xung 1 chu kỳ**, đúng để `ascon_apb` chốt cờ dính
-  `STATUS.done` (mục 6.2 `docs/spec.md`).
+  `STATUS.done` (mục 7.2 `docs/spec.md`).
 - Cờ `first_pt_done` (nội bộ FSM) reset ở `S_LOAD`, đảm bảo bit phân
   tách miền chỉ XOR đúng một lần mỗi phiên, kể cả khi AD rỗng — đúng
-  yêu cầu mục 7.3 `docs/spec.md` và mục #5/#6 trong danh sách lỗi hay
+  yêu cầu mục 8.3 `docs/spec.md` và mục #5/#6 trong danh sách lỗi hay
   gặp của `CLAUDE.md`.
 - `p8` **luôn** chạy sau mỗi khối `PROC_AD` (kể cả khối `PROC_AD` cuối
   cùng) nhưng **không bao giờ** chạy sau khối `PROC_TEXT` cuối cùng —
@@ -147,7 +147,7 @@ Ghi chú:
 ## 3. Bảng ngân sách chu kỳ
 
 Gọi `A` = số khối AD (`A = 0` nếu AD rỗng), `T` = số khối bản rõ/bản mã
-(`T ≥ 1` luôn, kể cả PT rỗng — mục 8.4 `docs/spec.md`):
+(`T ≥ 1` luôn, kể cả PT rỗng — mục 9.4 `docs/spec.md`):
 `A = ceil((len(AD)+1)/16)` nếu `len(AD)>0` else `0`,
 `T = ceil((len(PT)+1)/16)`.
 
@@ -259,7 +259,7 @@ FSM điều khiển toàn bộ luồng AEAD theo bảng mục 2, sở hữu mộ
 |---|---|---|---|
 | `clk, rst_n` | vào | 1 | Xung nhịp, reset bất đồng bộ tích cực mức thấp |
 | `start` | vào | 1 | Xung: có lệnh mới hợp lệ (tương ứng ghi `CMD` với `opcode≠0`) |
-| `opcode` | vào | 3 | Theo mã hóa mục 6.1 `docs/spec.md` |
+| `opcode` | vào | 3 | Theo mã hóa mục 7.1 `docs/spec.md` |
 | `last` | vào | 1 | 1 = khối cuối của giai đoạn hiện tại |
 | `mode` | vào | 1 | 0 = mã hóa, 1 = giải mã |
 | `valid_bytes` | vào | 5 | Số byte hợp lệ của khối (0–16), có nghĩa khi `last=1` |
@@ -278,7 +278,7 @@ FSM điều khiển toàn bộ luồng AEAD theo bảng mục 2, sở hữu mộ
 ### 4.6. `rtl/ip/ascon_apb.v`
 
 Đơn vị tổng hợp — giao diện APB slave, thanh ghi theo register map
-mục 6 `docs/spec.md`, ghép 4 lần ghi 32 bit thành khối 128 bit, sở
+mục 7 `docs/spec.md`, ghép 4 lần ghi 32 bit thành khối 128 bit, sở
 hữu một thực thể `ascon_aead_fsm`.
 
 | Cổng | Chiều | Rộng | Mô tả |

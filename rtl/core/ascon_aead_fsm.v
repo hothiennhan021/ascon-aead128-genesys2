@@ -1,5 +1,5 @@
 // Ascon-AEAD128 core control FSM. Implements the operation sequence
-// from docs/spec.md 7.1/7.2 on top of a single ascon_perm permutation
+// from docs/spec.md 8.1/8.2 on top of a single ascon_perm permutation
 // engine, per the state table in docs/uarch.md section 2.
 //
 // Two-process style: one sequential block holds every register (FSM
@@ -30,7 +30,7 @@ module ascon_aead_fsm (
     output wire         tag_fail
 );
 
-    // opcode encoding (docs/spec.md 6.1)
+    // opcode encoding (docs/spec.md 7.1)
     localparam OP_INIT       = 3'd1;
     localparam OP_PROC_AD    = 3'd2;
     localparam OP_PROC_TEXT  = 3'd3;
@@ -238,7 +238,7 @@ module ascon_aead_fsm (
                     if (mode_r && last_r) begin
                         // decrypt, last block: do not reveal yet -- hold
                         // until S_FIN_TAGXOR, blocked entirely if the tag
-                        // turns out to fail (docs/spec.md 8.5)
+                        // turns out to fail (docs/spec.md 9.5)
                         next_last_pt = dout_calc;
                     end else begin
                         next_dout       = dout_calc;

@@ -53,6 +53,8 @@ kat:
 	@if not exist $(BUILD) mkdir $(BUILD)
 	$(IVERILOG) -g2005 -o $(BUILD)/tb_aead.vvp $(RTL_CORE) tb/directed/tb_aead.v
 	$(VVP) $(BUILD)/tb_aead.vvp
+	$(IVERILOG) -g2005 -o $(BUILD)/tb_apb.vvp $(RTL_CORE) $(RTL_IP) tb/directed/tb_apb.v
+	$(VVP) $(BUILD)/tb_apb.vvp
 
 # --- Buoc 5: cong kiem soat chinh ---
 regress: unit kat
