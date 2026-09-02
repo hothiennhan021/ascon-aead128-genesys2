@@ -52,6 +52,16 @@ def perm(S, rounds):
     return S
 
 
+def perm_dump(S, rounds, label=""):
+    tag = label + ' ' if label else ''
+    print('%sinit %016X %016X %016X %016X %016X' % (tag, S[0], S[1], S[2], S[3], S[4]))
+    for i in range(rounds):
+        S = round_fn(S, 16 - rounds + i)
+        print('%sround %2d %016X %016X %016X %016X %016X' %
+              (tag, i, S[0], S[1], S[2], S[3], S[4]))
+    return S
+
+
 def pad16(data):
     return data + b'\x01' + b'\x00' * ((-(len(data) + 1)) % 16)
 
@@ -157,3 +167,7 @@ if __name__ == '__main__':
         kat_path = sys.argv[sys.argv.index('--run-kat') + 1]
         ok = run_kat(kat_path)
         sys.exit(0 if ok else 1)
+    if '--dump-p12' in sys.argv:
+        perm_dump([0, 0, 0, 0, 0], 12, 'p12')
+    if '--dump-p8' in sys.argv:
+        perm_dump([0, 0, 0, 0, 0], 8, 'p8')

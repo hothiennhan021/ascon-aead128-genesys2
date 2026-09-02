@@ -6,9 +6,9 @@ PY       := python
 IVERILOG := iverilog
 VVP      := vvp
 
+# TODO: them lai rtl/core/ascon_aead_fsm.v khi module do duoc viet
 RTL_CORE := rtl/core/ascon_sbox.v rtl/core/ascon_linear.v \
-            rtl/core/ascon_round.v rtl/core/ascon_perm.v \
-            rtl/core/ascon_aead_fsm.v
+            rtl/core/ascon_round.v rtl/core/ascon_perm.v
 RTL_IP   := rtl/ip/ascon_apb.v
 BUILD    := build
 KAT      := vectors/LWC_AEAD_KAT_128_128.txt
@@ -36,6 +36,10 @@ model:
 # --- Buoc 5a: test tung module ---
 unit:
 	@if not exist $(BUILD) mkdir $(BUILD)
+	$(IVERILOG) -g2005 -I tb/unit -o $(BUILD)/tb_sbox.vvp rtl/core/ascon_sbox.v rtl/core/ascon_linear.v tb/unit/tb_sbox.v
+	$(VVP) $(BUILD)/tb_sbox.vvp
+	$(IVERILOG) -g2005 -I tb/unit -o $(BUILD)/tb_linear.vvp rtl/core/ascon_sbox.v rtl/core/ascon_linear.v tb/unit/tb_linear.v
+	$(VVP) $(BUILD)/tb_linear.vvp
 	$(IVERILOG) -g2005 -o $(BUILD)/tb_round.vvp $(RTL_CORE) tb/unit/tb_round.v
 	$(VVP) $(BUILD)/tb_round.vvp
 	$(IVERILOG) -g2005 -o $(BUILD)/tb_perm.vvp $(RTL_CORE) tb/unit/tb_perm.v
