@@ -1,3 +1,5 @@
+import sys
+
 MASK = (1 << 64) - 1
 RC = [0x3c, 0x2d, 0x1e, 0x0f, 0xf0, 0xe1, 0xd2, 0xc3,
       0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b]
@@ -119,3 +121,39 @@ def decrypt(key, nonce, ad, ct, tag):
     if finalize(S, key) != tag:
         return None
     return pt
+
+
+def run_kat(path):
+    with open(path) as f:
+        text = f.read()
+    blocks = [b for b in text.strip().split('\n\n') if b.strip()]
+    total = len(blocks)
+    passed = 0
+    first_fail = None
+    for block in blocks:
+        fields = {}
+        for line in block.strip().splitlines():
+            k, _, v = line.partition('=')
+            fields[k.strip()] = v.strip()
+        count = int(fields['Count'])
+        key = bytes.fromhex(fields['Key'])
+        nonce = bytes.fromhex(fields['Nonce'])
+        pt = bytes.fromhex(fields['PT'])
+        ad = bytes.fromhex(fields['AD'])
+        ct_expected = bytes.fromhex(fields['CT'])
+        ct, tag = encrypt(key, nonce, ad, pt)
+        if ct + tag == ct_expected:
+            passed += 1
+        elif first_fail is None:
+            first_fail = (count, len(ad), len(pt))
+    if first_fail is not None:
+        print('First fail: Count=%d AD_len=%d PT_len=%d' % first_fail)
+    print('PASSED %d/%d' % (passed, total))
+    return passed == total
+
+
+if __name__ == '__main__':
+    if '--run-kat' in sys.argv:
+        kat_path = sys.argv[sys.argv.index('--run-kat') + 1]
+        ok = run_kat(kat_path)
+        sys.exit(0 if ok else 1)
