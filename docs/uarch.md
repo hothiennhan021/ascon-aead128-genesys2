@@ -350,7 +350,11 @@ Mục này ghi lại **dự đoán** trước khi chạy `make impl`/`make repor
 cho `ROUNDS_PER_CYCLE=2`, để sau đó so với số đo thật (bước 9 quy
 trình làm việc). Cơ sở dự đoán là timing report thật của kiến trúc
 `ROUNDS_PER_CYCLE=1` đã có (`reports/ppa.csv` dòng `1rpcc`,
-`reports/timing_critical.rpt`), không phải suy đoán suông.
+`reports/timing_critical.rpt` — snapshot dò thử tại chu kỳ 6.000 ns
+từ phiên làm việc trước, không phải chu kỳ 5.6 ns cuối cùng đã lưu),
+không phải suy đoán suông. File checkpoint/report cuối cùng, tái tạo
+được và không ghi đè lẫn nhau giữa hai kiến trúc, nằm ở
+`reports/*_rpc1.*` và `reports/*_rpc2.*` (xem mục 6.6).
 
 ### 6.1. Vì sao chọn nhân đôi tổ hợp thay vì thêm tầng thanh ghi
 
@@ -387,7 +391,7 @@ chu kỳ (giảm 41 %), AD=2/PT=3 đi từ 65 → 37 chu kỳ (giảm 43 %).
 
 Đường nền (RPC=1, `reports/ppa.csv`): `LUT_core=1438`, `FF_core=732`,
 `LUT_total=1556`, `FF_total=1517`. Trong đó phần lớn LUT của
-`u_perm` (1413/1438 theo `report_utilization_hierarchical.rpt`) là
+`u_perm` (1413/1438 theo `report_utilization_hierarchical_rpc1.rpt`) là
 logic tổ hợp của **một** `ascon_round` (S-box song song 64×5-bit +
 lớp tuyến tính + case tra hằng số vòng), không phải logic điều
 khiển/mux thanh ghi (phần đó nhỏ, ước lượng vài trăm LUT).
@@ -403,8 +407,10 @@ khiển/mux thanh ghi (phần đó nhỏ, ước lượng vài trăm LUT).
 
 ### 6.4. Dự đoán Fmax và tỉ lệ logic/route trên đường tới hạn mới
 
-Đường tới hạn hiện tại của RPC=1 (`reports/timing_critical.rpt`, đo
-tại chu kỳ thử 6.000 ns) đi xuyên qua đúng một `ascon_round`:
+Đường tới hạn hiện tại của RPC=1 (`reports/timing_critical.rpt` của
+phiên trước, đo tại chu kỳ thử 6.000 ns — snapshot dò thử, khác chu
+kỳ 5.6 ns cuối cùng đã lưu ở `reports/timing_critical_rpc1.rpt`, xem
+mục 6.6) đi xuyên qua đúng một `ascon_round`:
 
 ```
 Data Path Delay: 5.777 ns (logic 1.250 ns = 21.6 %, route 4.527 ns = 78.4 %)
@@ -465,55 +471,74 @@ kết quả `make report` thật.**
 
 ### 6.6. So sánh với số đo thật (sau `make impl`/`make report` RPC=2)
 
-Số đo thật (`reports/ppa.csv` dòng `2rpcc`, `reports/timing_critical.rpt`,
-`reports/report_utilization_route_hierarchical.rpt`, chu kỳ đã chọn
-6.000 ns, WNS=0.143 ns):
+Số đo thật, từ bộ artifact cuối cùng — tái tạo được, không ghi đè lẫn
+nhau (`reports/ppa.csv` dòng `1rpcc`/`2rpcc`,
+`reports/timing_critical_rpc1.rpt`, `reports/timing_critical_rpc2.rpt`,
+`reports/report_utilization_route_hierarchical_rpc1.rpt`,
+`reports/report_utilization_route_hierarchical_rpc2.rpt`):
+
+| | RPC=1 (`*_rpc1.*`) | RPC=2 (`*_rpc2.*`) |
+|---|---|---|
+| Chu kỳ đã chọn / WNS | 5.600 ns / 0.036 ns | 6.000 ns / 0.143 ns |
+| `Fmax` | 179.73 MHz | 170.74 MHz |
+| Data path delay đường tới hạn | 5.282 ns (logic 1.260 ns = 23.85 %, route 4.022 ns = 76.15 %) | 5.880 ns (logic 1.262 ns = 21.46 %, route 4.618 ns = 78.54 %) |
+| Mức logic đường tới hạn | 3 (LUT2=1 LUT5=1 LUT6=1) | 6 (LUT3=2 LUT5=3 LUT6=1) |
+
+So với dự đoán ở mục 6.4/6.5 (dự đoán dùng baseline dò thử 4 mức/
+5.777 ns, khác baseline cuối cùng 3 mức/5.282 ns ở trên — xem ghi chú
+đầu mục 6 và 6.4):
 
 | | Dự đoán (mục 6.4/6.5) | Đo thật | Nhận xét |
 |---|---|---|---|
 | `Fmax` | 85–95 MHz (rộng 75–115) | **170.74 MHz** | Sai nặng — thực tế gần bằng RPC=1 (179.73 MHz), chỉ giảm **5.0 %** |
-| Mức logic đường tới hạn | ~8 (nhân đôi từ 4) | **6** | Không nhân đôi |
-| Data path delay | ~11.5 ns (dự đoán trung tâm) | **5.880 ns** | Gần bằng RPC=1 (5.777 ns), chỉ tăng 1.8 % |
-| Tỉ lệ logic/route | dự đoán **giữ nguyên** ~22 %/78 % | **21.5 % / 78.5 %** | **Đúng** — phần này dự đoán chuẩn |
+| Mức logic đường tới hạn | ~8 (nhân đôi từ baseline dò thử 4) | **6** (so với baseline **cuối cùng** 3 → đúng **gấp đôi**, 3→6) | Nhân đôi *đúng* nếu so với baseline cuối cùng — dự đoán chỉ lệch vì dùng nhầm baseline dò thử (4, không phải 3) |
+| Data path delay | ~11.5 ns (dự đoán trung tâm, = 2×5.777) | **5.880 ns** (so với RPC=1 cuối cùng 5.282 ns → chỉ tăng **11.3 %**) | Sai nặng dù mức logic tăng đúng gấp đôi — vì độ trễ trung bình mỗi mức **giảm gần một nửa** (1.76 ns/mức ở RPC=1 → 0.98 ns/mức ở RPC=2), không phải hằng số như mô hình dự đoán giả định |
+| Tỉ lệ logic/route | dự đoán **giữ nguyên** ~22 %/78 % (so baseline dò thử 21.6/78.4) | **21.5 % / 78.5 %** so baseline dò thử, **21.46 % / 78.54 %** so baseline cuối cùng (23.85 %/76.15 %) | Đúng theo baseline dò thử; so baseline cuối cùng thì phần route còn **tăng nhẹ** (76.15→78.54 %) chứ không hằng định tuyệt đối — nhưng vẫn cùng bậc độ lớn (~1/4–1/5 logic so route ở cả hai) |
 | `LUT_core`/`LUT_total` | +70–90 % (≈2400–2850) | **2195 / 2313** (+52.7 %/+48.7 %) | Đúng chiều, sai độ lớn — tăng ít hơn dự đoán |
 | `FF_core`/`FF_total` | không đổi | **731 / 1516** (~không đổi) | Đúng |
 | `cycles_per_block` | 5 (đúng công thức mục 6.2) | 5 | Đúng — đây là phần cấu trúc thuần túy, không phụ thuộc timing |
 | `throughput_asymptotic_Mbps` | 2176–2432 (dự đoán **thấp hơn** RPC=1) | **4370.94** (**cao hơn** RPC=1 71 %) | Sai chiều — dự đoán bi quan quá mức vì dựa trên Fmax sai |
 | `Mbps_per_LUT` | ~0.76–0.97 (dự đoán rõ ràng **thấp hơn**) | **1.8897** (**cao hơn** RPC=1 15 %) | Sai chiều — RPC=2 thắng cả thông lượng lẫn hiệu suất diện tích |
 
-**Vì sao Fmax không giảm gần một nửa như dự đoán:**
+**Vì sao Fmax không giảm gần một nửa như dự đoán, dù mức logic đúng
+là nhân đôi:**
 
-Đường tới hạn mới (`u_fsm/u_perm/busy_r_reg/C` →
-`u_fsm/u_perm/state_reg[129]/D`) **không** đi xuyên suốt hai
-`ascon_round` nối tiếp như mô hình dự đoán ở mục 6.4 giả định. Vết
-đường đi thật: `busy_r` → `done_r_i_3` (mux tính `perm_start`) →
-`eff_idx[2]` → `g_double_round.u_round0/s1[2]` (mới đi được một phần
-lớp tuyến tính của **vòng thứ nhất**) → `g_double_round.m1[2]` (đầu
-vào vòng thứ hai) → `g_double_round.u_round1/s2[2]` (lớp phi tuyến
-của **vòng thứ hai**) → mux ghi thanh ghi trạng thái. Đây là **một
-bit cụ thể** có độ sâu tổ hợp thấp hơn nhiều so với đường tới hạn dài
-nhất có thể có trên lý thuyết (đi trọn cả S-box + tuyến tính của cả
-hai vòng) — dự đoán ở mục 6.4 đã sai vì mặc định (không kiểm chứng)
-rằng đường tới hạn cũ sẽ "nối dài gấp đôi" bằng cách nối thêm nguyên
-một `ascon_round` thứ hai vào đúng chỗ nó dừng, trong khi thực tế
-route/logic tối ưu tìm ra một đường xuyên qua ranh giới vòng 1→vòng 2
-ngắn hơn nhiều (chỉ 6 mức thay vì ~8), và báo cáo utilization còn ghi
-chú rõ "cross-hierarchy LUT combining" — công cụ tổng hợp đã gộp/tối
-ưu logic xuyên qua ranh giới hai instance `ascon_round`, chứ không
-giữ nguyên chúng như hai khối đen tách biệt đặt cạnh nhau như mô hình
-dự đoán hình dung.
+Đường tới hạn RPC=2 (`u_fsm/u_perm/busy_r_reg/C` →
+`u_fsm/u_perm/state_reg[129]/D`, trong `timing_critical_rpc2.rpt`) đi
+qua: `busy_r` → `done_r_i_3` (mux tính `perm_start`) → `eff_idx[2]` →
+`g_double_round.u_round0/s1[2]` (một phần lớp tuyến tính của **vòng
+thứ nhất**) → `g_double_round.m1[2]` (đầu vào vòng thứ hai) →
+`g_double_round.u_round1/s2[2]` (lớp phi tuyến của **vòng thứ hai**)
+→ mux ghi thanh ghi trạng thái — 6 mức. Đường tới hạn RPC=1
+(`u_fsm/state_reg[2]_rep/C` → `u_fsm/u_perm/state_reg[313]/CE`,
+trong `timing_critical_rpc1.rpt`) đi qua `round_idx_reg` →
+`perm_load` → mux nạp `state[319]` — 3 mức. Đúng bằng một nửa, khớp
+chính xác giả thuyết "nối thêm một `ascon_round` thứ hai làm mức logic
+tăng gấp đôi" ở mục 6.4.
 
-**Phần dự đoán đúng — tỉ lệ logic/route**: giả thuyết cốt lõi ở mục
-6.4 ("mỗi mức logic FPGA luôn kéo theo route, nên tỉ lệ logic/route
-được dự đoán giữ nguyên xấp xỉ dù độ sâu logic tăng") **được xác
-nhận đúng**: 21.5 %/78.5 % so với 21.6 %/78.4 % của RPC=1, gần như
-không đổi. Điều dự đoán sai không phải bản chất vật lý (mỗi mức logic
-vẫn kéo theo ~0.7–0.9 ns route, tỉ lệ ~1/4–1/5 logic so với route ở
-cả hai kiến trúc) mà là **số mức logic thực tế trên đường tới hạn
-mới tăng ít hơn nhiều so với giả định nhân đôi ngây thơ** (6 so với 8
-mức dự đoán, so với 4 mức của RPC=1) — vì đường tới hạn mới xuất phát
-từ một tổ hợp khác (mux điều khiển `perm_start`/`eff_idx`) chứ không
-phải lặp lại y hệt đường tới hạn cũ nối dài gấp đôi.
+Nhưng **độ trễ không nhân đôi theo mức logic**: 3 mức của RPC=1 tốn
+5.282 ns (≈1.76 ns/mức), còn 6 mức của RPC=2 chỉ tốn 5.880 ns
+(≈0.98 ns/mức) — trung bình mỗi mức rẻ đi gần một nửa. Nguyên nhân:
+đây không phải "nối 2 khối đen `ascon_round` giống hệt nhau nối
+tiếp" như mô hình dự đoán hình dung, mà đường tới hạn mới xuất phát
+từ một tổ hợp *khác* (mux điều khiển `perm_start`/`eff_idx`, không
+phải xuất phát từ chân `state_reg` như đường tới hạn RPC=1), và báo
+cáo utilization ghi chú rõ "cross-hierarchy LUT combining" — công cụ
+tổng hợp gộp/tối ưu logic xuyên qua ranh giới hai instance
+`ascon_round` thay vì giữ nguyên chúng như hai khối đen tách biệt.
+Kết quả: số mức logic tăng đúng như dự đoán cấu trúc (gấp đôi), nhưng
+**loại** logic cụ thể trên đường tới hạn mới rẻ hơn (ít fanout rộng
+hơn) nên tổng độ trễ gần như không đổi.
+
+**Phần dự đoán đúng — tỉ lệ logic/route cùng bậc độ lớn**: giả thuyết
+"mỗi mức logic FPGA luôn kéo theo route, nên route vẫn chiếm phần lớn
+đường tới hạn dù độ sâu logic tăng" được xác nhận về **bậc độ lớn**
+(cả hai kiến trúc: route ≈ 76–79 %, logic ≈ 21–24 %), dù không giữ
+nguyên tuyệt đối (giảm nhẹ phần logic, tăng nhẹ phần route so RPC=1).
+Đây là lý do cốt lõi khiến việc nhân đôi *mức* logic không kéo theo
+nhân đôi *độ trễ*: phần lớn độ trễ vẫn nằm ở route, và route của
+đường tới hạn mới không tăng tỉ lệ thuận với số mức logic mới thêm
+vào.
 
 **Kết luận thực nghiệm** (ngược với dự đoán bi quan ở mục 6.5):
 `ROUNDS_PER_CYCLE=2` **thắng tuyệt đối** RPC=1 trên cả hai trục —
@@ -523,8 +548,8 @@ Mbps/LUT) — vì Fmax chỉ giảm 5 % (không phải ~50 % như dự đoán) t
 khi số chu kỳ/khối giảm đúng 44 % (5/9) như dự đoán cấu trúc thuần
 túy ở mục 6.2. Ngưỡng hòa vốn 99.85 MHz nêu ở mục 6.5 bị vượt xa (Fmax
 thật cao hơn ngưỡng đó 71 %). Bài học: với thiết kế mà đường tới hạn
-đã route-dominated (78 % route ngay ở RPC=1), việc nhân đôi logic tổ
-hợp trong `generate` không nhất thiết nhân đôi đường tới hạn thật —
-công cụ P&R có thể tìm ra đường đi ngắn hơn nhiều so với "nối 2 khối
-đen tổ hợp lại với nhau" nếu không có ranh giới thanh ghi ngăn nó tối
-ưu xuyên qua các instance.
+đã route-dominated (~76–78 % route ngay ở RPC=1), việc nhân đôi logic
+tổ hợp trong `generate` **có thể** nhân đôi đúng số mức logic trên
+đường tới hạn (đã xảy ra ở đây, 3→6) mà **vẫn không** nhân đôi độ trễ
+thật — vì route của FPGA phụ thuộc vào loại tín hiệu/mức fanout cụ
+thể trên từng đường đi, không phải hằng số nhân theo số mức logic.

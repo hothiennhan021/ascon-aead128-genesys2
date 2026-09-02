@@ -1,20 +1,30 @@
-# Quet Fmax bang cach thu nhieu chu ky dong ho tren reports/post_synth.dcp
-# (buoc 7 trong quy trinh lam viec, xem CLAUDE.md). Chua chay o phien
-# nay - chi viet script, chua goi Vivado.
+# Quet Fmax bang cach thu nhieu chu ky dong ho tren checkpoint post-
+# synth (buoc 7 trong quy trinh lam viec, xem CLAUDE.md).
 #
 # Chay bang: vivado -mode batch -source scripts/sweep_fmax.tcl
-# (can chay "make synth" truoc de co reports/post_synth.dcp)
+# hoac:      vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs 2
+# (so cuoi la ROUNDS_PER_CYCLE, mac dinh 1 -- phai khop voi RPC da
+# dung khi chay "make synth" de co dung reports/post_synth_rpc<N>.dcp.
+# make impl RPC=2 goi dung cach nay.)
 #
-# Voi moi chu ky trong danh sach: mo lai post_synth.dcp (khong ke thua
-# placement/routing tu lan thu truoc, moi phep thu doc lap), dat lai
-# create_clock, chay opt_design -> place_design -> phys_opt_design ->
-# route_design, doc WNS qua get_property SLACK tren get_timing_paths
-# (duong xau nhat, huong setup), tinh Fmax = 1000/(period - WNS) MHz.
-# Luu post_route.dcp cho chu ky NHO NHAT (nhanh nhat) van con WNS >= 0.
+# Voi moi chu ky trong danh sach: mo lai post_synth_rpc<N>.dcp (khong
+# ke thua placement/routing tu lan thu truoc, moi phep thu doc lap),
+# dat lai create_clock, chay opt_design -> place_design ->
+# phys_opt_design -> route_design, doc WNS qua get_property SLACK tren
+# get_timing_paths (duong xau nhat, huong setup), tinh Fmax =
+# 1000/(period - WNS) MHz. Luu post_route_rpc<N>.dcp cho chu ky NHO
+# NHAT (nhanh nhat) van con WNS >= 0 -- hau to rpc<N> de hai kien truc
+# khong ghi de checkpoint cua nhau.
+
+set rounds_per_cycle 1
+if {$argc > 0} {
+    set rounds_per_cycle [lindex $argv 0]
+}
+set rpc_suffix "rpc${rounds_per_cycle}"
 
 set report_dir     reports
-set post_synth_dcp [file join $report_dir post_synth.dcp]
-set post_route_dcp [file join $report_dir post_route.dcp]
+set post_synth_dcp [file join $report_dir "post_synth_${rpc_suffix}.dcp"]
+set post_route_dcp [file join $report_dir "post_route_${rpc_suffix}.dcp"]
 set clock_port      pclk
 set clock_name      pclk
 

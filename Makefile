@@ -75,19 +75,21 @@ regress: unit kat
 	@echo === REGRESSION DONE ===
 
 # --- Buoc 6: tong hop Out-of-Context ---
-# RPC truyen vao synth_ooc.tcl qua -tclargs, dung read_verilog -define
-# ROUNDS_PER_CYCLE (cung macro doc boi rtl/core/ascon_perm.v khi mo
-# phong -- xem scripts/synth_ooc.tcl va docs/uarch.md muc 6).
+# RPC truyen vao synth_ooc.tcl qua -tclargs, dung synth_design
+# -verilog_define ROUNDS_PER_CYCLE (cung macro doc boi
+# rtl/core/ascon_perm.v khi mo phong -- xem scripts/synth_ooc.tcl va
+# docs/uarch.md muc 6). Checkpoint/report ra co hau to _rpc<N> de hai
+# kien truc khong ghi de len nhau.
 synth:
 	vivado -mode batch -source scripts/synth_ooc.tcl -tclargs $(RPC)
 
-# --- Buoc 7: implement va quet Fmax (can co reports/post_synth.dcp) ---
+# --- Buoc 7: implement va quet Fmax (can co reports/post_synth_rpc$(RPC).dcp) ---
 impl: synth
-	vivado -mode batch -source scripts/sweep_fmax.tcl
+	vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs $(RPC)
 
-# --- Buoc 7: bao cao PPA sau route (can co reports/post_route.dcp) ---
+# --- Buoc 7: bao cao PPA sau route (can co reports/post_route_rpc$(RPC).dcp) ---
 report:
-	vivado -mode batch -source scripts/report_ppa.tcl
+	vivado -mode batch -source scripts/report_ppa.tcl -tclargs $(RPC)
 
 # --- Buoc 8: do cong suat ---
 power:
