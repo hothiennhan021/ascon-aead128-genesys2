@@ -18,7 +18,7 @@ set post_route_dcp [file join $report_dir post_route.dcp]
 set clock_port      pclk
 set clock_name      pclk
 
-set periods {10.0 8.0 6.0 5.0 4.5 4.0 3.5 3.0}
+set periods {10.0 8.0 6.0 5.8 5.6 5.4 5.2 5.0 4.5 4.0 3.5 3.0}
 
 file mkdir $report_dir
 

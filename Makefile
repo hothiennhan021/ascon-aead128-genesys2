@@ -16,7 +16,14 @@ RTL_IP   := rtl/ip/ascon_apb.v
 BUILD    := build
 KAT      := vectors/LWC_AEAD_KAT_128_128.txt
 
-.PHONY: all model unit kat regress synth impl power clean help
+# So vong hoan vi chay moi chu ky trong ascon_perm (1 = kien truc goc,
+# 2 = kien truc khao sat thu hai, xem docs/uarch.md muc 6). Ghi de
+# bang: make regress RPC=2 -- truyen thang xuong macro tien xu ly
+# `ROUNDS_PER_CYCLE (xem rtl/core/ascon_perm.v), khong dung defparam/
+# tham so dong lenh.
+RPC := 1
+
+.PHONY: all model unit kat regress synth impl report power clean help
 
 help:
 	@echo.
@@ -26,8 +33,12 @@ help:
 	@echo   make regress   - chay toan bo testbench
 	@echo   make synth     - tong hop Out-of-Context bang Vivado
 	@echo   make impl      - implement va quet Fmax
+	@echo   make report    - bao cao PPA sau route (report_utilization -hierarchical)
 	@echo   make power     - do cong suat bang SAIF
 	@echo   make clean     - xoa file tam
+	@echo.
+	@echo   Them RPC=2 vao unit/kat/regress/synth de chay kien truc
+	@echo   ROUNDS_PER_CYCLE=2 (mac dinh RPC=1) - xem docs/uarch.md muc 6.
 	@echo.
 
 all: model regress
@@ -37,23 +48,26 @@ model:
 	$(PY) model/ascon_model.py --run-kat $(KAT)
 
 # --- Buoc 5a: test tung module ---
+# -DROUNDS_PER_CYCLE=$(RPC): dinh nghia macro tien xu ly doc boi
+# rtl/core/ascon_perm.v (va tb/unit/tb_perm.v) de chon kien truc,
+# xem docs/uarch.md muc 6.
 unit:
 	@if not exist $(BUILD) mkdir $(BUILD)
 	$(IVERILOG) -g2005 -I tb/unit -o $(BUILD)/tb_sbox.vvp rtl/core/ascon_sbox.v rtl/core/ascon_linear.v tb/unit/tb_sbox.v
 	$(VVP) $(BUILD)/tb_sbox.vvp
 	$(IVERILOG) -g2005 -I tb/unit -o $(BUILD)/tb_linear.vvp rtl/core/ascon_sbox.v rtl/core/ascon_linear.v tb/unit/tb_linear.v
 	$(VVP) $(BUILD)/tb_linear.vvp
-	$(IVERILOG) -g2005 -o $(BUILD)/tb_round.vvp $(RTL_CORE) tb/unit/tb_round.v
+	$(IVERILOG) -g2005 -DROUNDS_PER_CYCLE=$(RPC) -o $(BUILD)/tb_round.vvp $(RTL_CORE) tb/unit/tb_round.v
 	$(VVP) $(BUILD)/tb_round.vvp
-	$(IVERILOG) -g2005 -o $(BUILD)/tb_perm.vvp $(RTL_CORE) tb/unit/tb_perm.v
+	$(IVERILOG) -g2005 -DROUNDS_PER_CYCLE=$(RPC) -o $(BUILD)/tb_perm.vvp $(RTL_CORE) tb/unit/tb_perm.v
 	$(VVP) $(BUILD)/tb_perm.vvp
 
 # --- Buoc 5b: test vector NIST qua RTL ---
 kat:
 	@if not exist $(BUILD) mkdir $(BUILD)
-	$(IVERILOG) -g2005 -o $(BUILD)/tb_aead.vvp $(RTL_CORE) tb/directed/tb_aead.v
+	$(IVERILOG) -g2005 -DROUNDS_PER_CYCLE=$(RPC) -o $(BUILD)/tb_aead.vvp $(RTL_CORE) tb/directed/tb_aead.v
 	$(VVP) $(BUILD)/tb_aead.vvp
-	$(IVERILOG) -g2005 -o $(BUILD)/tb_apb.vvp $(RTL_CORE) $(RTL_IP) tb/directed/tb_apb.v
+	$(IVERILOG) -g2005 -DROUNDS_PER_CYCLE=$(RPC) -o $(BUILD)/tb_apb.vvp $(RTL_CORE) $(RTL_IP) tb/directed/tb_apb.v
 	$(VVP) $(BUILD)/tb_apb.vvp
 
 # --- Buoc 5: cong kiem soat chinh ---
@@ -61,12 +75,19 @@ regress: unit kat
 	@echo === REGRESSION DONE ===
 
 # --- Buoc 6: tong hop Out-of-Context ---
+# RPC truyen vao synth_ooc.tcl qua -tclargs, dung read_verilog -define
+# ROUNDS_PER_CYCLE (cung macro doc boi rtl/core/ascon_perm.v khi mo
+# phong -- xem scripts/synth_ooc.tcl va docs/uarch.md muc 6).
 synth:
-	vivado -mode batch -source scripts/synth_ooc.tcl
+	vivado -mode batch -source scripts/synth_ooc.tcl -tclargs $(RPC)
 
 # --- Buoc 7: implement va quet Fmax (can co reports/post_synth.dcp) ---
 impl: synth
 	vivado -mode batch -source scripts/sweep_fmax.tcl
+
+# --- Buoc 7: bao cao PPA sau route (can co reports/post_route.dcp) ---
+report:
+	vivado -mode batch -source scripts/report_ppa.tcl
 
 # --- Buoc 8: do cong suat ---
 power:

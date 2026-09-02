@@ -187,10 +187,44 @@ Ghi chú:
   công thức trên.
 - `SOFT_RESET` và `NOP` xử lý trong 1 chu kỳ tại `S_IDLE`, không đáng
   kể trong ngân sách.
-- Kiến trúc khảo sát thứ hai (`ROUNDS_PER_CYCLE=2`, bước 9 trong quy
-  trình làm việc) sẽ giảm gần một nửa số chu kỳ cho mỗi `p8`/`p12`,
-  đánh đổi bằng đường tổ hợp dài hơn — không thuộc phạm vi tài liệu
-  này.
+
+### 3.1. Ngân sách chu kỳ khi `ROUNDS_PER_CYCLE=2`
+
+Kiến trúc khảo sát thứ hai (bước 9 quy trình làm việc, chi tiết dự
+đoán/so sánh ở mục 6) chạy 2 vòng hoán vị mỗi chu kỳ: `p12` còn 6 chu
+kỳ (thay vì 12), `p8` còn 4 chu kỳ (thay vì 8) — FSM (`S_LOAD`,
+`S_XOR_IN`, `S_INIT_KEYXOR`, ...) không đổi, chỉ riêng số chu kỳ nằm
+trong `S_PERM` giảm một nửa:
+
+| Giai đoạn | Số chu kỳ (RPC=1) | Số chu kỳ (RPC=2) | Thành phần (RPC=2) |
+|---|---|---|---|
+| `INIT` | 14 | **8** | 1 (`S_LOAD`) + 6 (`p12`) + 1 (`S_INIT_KEYXOR`) |
+| Mỗi khối `PROC_AD` | 9 | **5** | 1 (`S_XOR_IN`) + 4 (`p8`) |
+| Khối `PROC_TEXT` không phải cuối | 9 | **5** | 1 (`S_XOR_IN`) + 4 (`p8`) |
+| Khối `PROC_TEXT` cuối | 1 | 1 | không đổi — không chạy `p8` |
+| `FINAL` | 14 | **8** | 1 (`S_FIN_KEYXOR`) + 6 (`p12`) + 1 (`S_FIN_TAGXOR`) |
+
+**Công thức tổng (RPC=2):**
+
+```
+N_cycle_2(A, T) = 8 (INIT) + 5*A + 5*(T-1) + 1 + 8 (FINAL)
+                = 12 + 5*(A + T)
+```
+
+**Ví dụ cụ thể** (so với `N_cycle` ở bảng RPC=1 phía trên):
+
+| Trường hợp | A | T | N_cycle (RPC=1) | N_cycle (RPC=2) | Giảm |
+|---|---|---|---|---|---|
+| AD rỗng, PT rỗng | 0 | 1 | 29 | 12 + 5·1 = **17** | 41 % |
+| AD = 1 byte, PT rỗng | 1 | 1 | 38 | 12 + 5·2 = **22** | 42 % |
+| AD rỗng, PT = 16 byte (1 khối tròn) | 0 | 2 | 38 | 12 + 5·2 = **22** | 42 % |
+| AD rỗng, PT = 10 byte | 0 | 1 | 29 | 12 + 5·1 = **17** | 41 % |
+| AD = 2 khối, PT = 3 khối | 2 | 3 | 65 | 12 + 5·5 = **37** | 43 % |
+
+Không giảm đúng một nửa vì phần chu kỳ điều khiển cố định
+(`S_LOAD`/`S_XOR_IN`/`S_INIT_KEYXOR`/`S_FIN_KEYXOR`/`S_FIN_TAGXOR`)
+không co lại theo `ROUNDS_PER_CYCLE` — chỉ riêng số chu kỳ chạy trong
+`S_PERM` (`p8`/`p12`) mới giảm đúng một nửa.
 
 ---
 
@@ -304,5 +338,193 @@ hữu một thực thể `ascon_aead_fsm`.
   nhánh khối cuối của `decrypt`).
 - Chưa thiết kế chi tiết logic `pslverr` và các trường hợp lỗi giao
   thức APB khác ngoài `din_full=0`.
-- Chưa khảo sát kiến trúc `ROUNDS_PER_CYCLE=2` (bước 9 quy trình làm
-  việc).
+- Kiến trúc `ROUNDS_PER_CYCLE=2` (bước 9 quy trình làm việc): đã
+  khảo sát — xem mục 3.1 (ngân sách chu kỳ) và mục 6 (dự đoán và so
+  sánh với số đo thật, `reports/ppa.csv` dòng `2rpcc`).
+
+---
+
+## 6. Dự đoán cho kiến trúc hai vòng mỗi chu kỳ
+
+Mục này ghi lại **dự đoán** trước khi chạy `make impl`/`make report`
+cho `ROUNDS_PER_CYCLE=2`, để sau đó so với số đo thật (bước 9 quy
+trình làm việc). Cơ sở dự đoán là timing report thật của kiến trúc
+`ROUNDS_PER_CYCLE=1` đã có (`reports/ppa.csv` dòng `1rpcc`,
+`reports/timing_critical.rpt`), không phải suy đoán suông.
+
+### 6.1. Vì sao chọn nhân đôi tổ hợp thay vì thêm tầng thanh ghi
+
+`ROUNDS_PER_CYCLE=2` instantiate `ascon_round` hai lần **nối tiếp
+thuần tổ hợp** trong `ascon_perm` (không thêm thanh ghi trung gian):
+vòng thứ nhất nhận `round_idx` hiện tại, vòng thứ hai nhận
+`round_idx+1`, kết quả vòng thứ hai mới được chốt vào thanh ghi
+trạng thái 320 bit ở cạnh lên kế tiếp. Bộ đếm `round_idx` nhảy 2 mỗi
+chu kỳ thay vì 1. `p12` (12 vòng, bắt đầu tại index 4) chạy 6 lượt
+chu kỳ (index 4,6,8,10,12,14); `p8` (8 vòng, bắt đầu tại index 8)
+chạy 4 lượt (index 8,10,12,14) — cả hai chẵn nên không có vòng lẻ dư
+ra, không cần logic xử lý trường hợp lẻ.
+
+### 6.2. Dự đoán ngân sách chu kỳ
+
+Suy trực tiếp từ mục 3: mỗi giai đoạn tốn bằng nửa số vòng hoán vị
+cộng phần điều khiển không đổi:
+
+| Giai đoạn | RPC=1 | RPC=2 | Ghi chú |
+|---|---|---|---|
+| `INIT` | 14 = 1+12+1 | **8** = 1+6+1 | `p12` còn 6 chu kỳ |
+| `FINAL` | 14 = 1+12+1 | **8** = 1+6+1 | `p12` còn 6 chu kỳ |
+| Khối `PROC_AD` / `PROC_TEXT` không cuối | 9 = 1+8 | **5** = 1+4 | `p8` còn 4 chu kỳ |
+| Khối `PROC_TEXT` cuối | 1 | 1 | không đổi — không chạy `p8` |
+
+Công thức tổng dự đoán: `N_cycle_2(A,T) = 12 + 5·(A+T)` (so với
+`N_cycle_1(A,T) = 20 + 9·(A+T)` ở mục 3). Tỉ lệ giảm dao động
+**55–57 %** tùy trường hợp (không đúng bằng một nửa, vì phần chu kỳ
+điều khiển cố định `S_LOAD`/`S_XOR_IN`/`S_INIT_KEYXOR`/... không co
+lại theo `ROUNDS_PER_CYCLE`): ví dụ AD rỗng/PT rỗng đi từ 29 → 17
+chu kỳ (giảm 41 %), AD=2/PT=3 đi từ 65 → 37 chu kỳ (giảm 43 %).
+
+### 6.3. Dự đoán tài nguyên (LUT/FF)
+
+Đường nền (RPC=1, `reports/ppa.csv`): `LUT_core=1438`, `FF_core=732`,
+`LUT_total=1556`, `FF_total=1517`. Trong đó phần lớn LUT của
+`u_perm` (1413/1438 theo `report_utilization_hierarchical.rpt`) là
+logic tổ hợp của **một** `ascon_round` (S-box song song 64×5-bit +
+lớp tuyến tính + case tra hằng số vòng), không phải logic điều
+khiển/mux thanh ghi (phần đó nhỏ, ước lượng vài trăm LUT).
+
+- **FF: dự đoán không đổi** (~732 lõi / ~1517 tổng) — thanh ghi
+  trạng thái vẫn 320 bit, bộ đếm `round_idx` vẫn 4 bit, không thêm
+  phần tử tuần tự nào khi nhân đôi khối tổ hợp.
+- **LUT: dự đoán tăng ~70–90 %**, tức `LUT_core` khoảng
+  **2400–2700**, `LUT_total` khoảng **2500–2850**. Không tăng đúng
+  gấp đôi vì phần mux ghi thanh ghi trạng thái (chọn `round_result`
+  so với `load`/giữ nguyên) không nhân đôi, chỉ có khối `ascon_round`
+  thứ hai là logic hoàn toàn mới.
+
+### 6.4. Dự đoán Fmax và tỉ lệ logic/route trên đường tới hạn mới
+
+Đường tới hạn hiện tại của RPC=1 (`reports/timing_critical.rpt`, đo
+tại chu kỳ thử 6.000 ns) đi xuyên qua đúng một `ascon_round`:
+
+```
+Data Path Delay: 5.777 ns (logic 1.250 ns = 21.6 %, route 4.527 ns = 78.4 %)
+Logic Levels: 4 (LUT3=1 LUT4=1 LUT5=1 LUT6=1)
+```
+
+Điểm mấu chốt để dự đoán: mỗi mức logic (LUT) trên FPGA luôn kéo
+theo một mạng định tuyến ra khỏi nó trước khi tới mức kế — độ trễ
+route không phải là "chi phí cố định" tách rời khỏi độ sâu logic, mà
+**tích lũy theo từng mức**, vì cấu trúc vật lý (S-box song song 64
+làn, các mạng fanout rộng như `fo=250`/`fo=28` do lớp tuyến tính XOR-
+xoay) lặp lại giống hệt ở vòng thứ hai. Do đó dự đoán chính: khi nối
+thêm một `ascon_round` tổ hợp thứ hai, **cả độ sâu logic (4→~8 mức)
+lẫn độ trễ route đều xấp xỉ nhân đôi theo cùng tỉ lệ**, chứ tỉ lệ
+logic/route (~22 %/~78 %) được dự đoán **giữ nguyên xấp xỉ**, không
+nghiêng hẳn về logic dù logic tăng gấp đôi.
+
+- **Dự đoán trung tâm**: data path delay đường tới hạn mới ≈
+  2 × 5.777 ≈ **11.5 ns**, cộng biên margin/skew tương tự → chu kỳ
+  khả thi ngắn nhất khoảng **11–12 ns** → **Fmax dự đoán ≈ 85–95 MHz**
+  (khoảng rộng hơn 75–115 MHz nếu công cụ place/route tận dụng được
+  việc hai `ascon_round` giờ nằm trong cùng một khối tổ hợp không bị
+  ngắt bởi thanh ghi, có thể đặt gần nhau hơn và giảm route delay so
+  với dự đoán tuyến tính).
+- Đây là dự đoán **giảm gần một nửa Fmax**, khác với suy luận ngây
+  thơ "route delay đã chiếm 78 %, chỉ logic tăng nên Fmax gần như
+  không đổi" — suy luận đó sai vì bỏ qua việc route delay gắn liền
+  với số mức logic, không phải hằng số của thiết kế.
+
+### 6.5. Dự đoán thông lượng — câu hỏi mở chính
+
+Đây là phép đánh đổi cần thực nghiệm mới trả lời được, vì hai hiệu
+ứng ngược chiều gần triệt tiêu nhau:
+
+- Số chu kỳ/khối giảm còn 5/9 ≈ 0.56 lần (mục 6.2) → xu hướng **tăng**
+  thông lượng ~1.8×.
+- Fmax dự đoán giảm còn ~85–95/179.73 ≈ 0.47–0.53 lần (mục 6.4) → xu
+  hướng **giảm** thông lượng gần 2×.
+
+`throughput_asymptotic_Mbps = Fmax_MHz × 128 / cycles_per_block`:
+
+| | RPC=1 (đo được) | RPC=2 (dự đoán, Fmax=85–95 MHz) |
+|---|---|---|
+| `cycles_per_block` | 9 | 5 |
+| `Fmax_MHz` | 179.73 | 85–95 |
+| `throughput_asymptotic_Mbps` | 2556.16 | **2176–2432** (dự đoán **thấp hơn** RPC=1) |
+| `Mbps_per_LUT` (÷ `LUT_total` dự đoán 2500–2850) | 1.6428 | **~0.76–0.97** (dự đoán rõ ràng thấp hơn) |
+
+**Dự đoán chính của mục này**: `ROUNDS_PER_CYCLE=2` nhiều khả năng
+**không** tăng thông lượng tuyệt đối (thậm chí giảm nhẹ), và chắc
+chắn làm giảm hiệu suất diện tích (`Mbps_per_LUT`) so với RPC=1 —
+trái ngược trực giác "chạy 2 vòng/chu kỳ thì nhanh hơn". Nếu số đo
+thật cho Fmax cao hơn ~113 MHz (129.73×9/5×... cụ thể: Fmax hòa vốn
+= 179.73×5/9 ≈ **99.85 MHz**), thông lượng tuyệt đối mới thắng RPC=1;
+thấp hơn ngưỡng đó thì RPC=2 vừa tốn thêm LUT vừa chậm hơn về thông
+lượng tuyệt đối. **99.85 MHz là ngưỡng hòa vốn cần theo dõi khi đọc
+kết quả `make report` thật.**
+
+### 6.6. So sánh với số đo thật (sau `make impl`/`make report` RPC=2)
+
+Số đo thật (`reports/ppa.csv` dòng `2rpcc`, `reports/timing_critical.rpt`,
+`reports/report_utilization_route_hierarchical.rpt`, chu kỳ đã chọn
+6.000 ns, WNS=0.143 ns):
+
+| | Dự đoán (mục 6.4/6.5) | Đo thật | Nhận xét |
+|---|---|---|---|
+| `Fmax` | 85–95 MHz (rộng 75–115) | **170.74 MHz** | Sai nặng — thực tế gần bằng RPC=1 (179.73 MHz), chỉ giảm **5.0 %** |
+| Mức logic đường tới hạn | ~8 (nhân đôi từ 4) | **6** | Không nhân đôi |
+| Data path delay | ~11.5 ns (dự đoán trung tâm) | **5.880 ns** | Gần bằng RPC=1 (5.777 ns), chỉ tăng 1.8 % |
+| Tỉ lệ logic/route | dự đoán **giữ nguyên** ~22 %/78 % | **21.5 % / 78.5 %** | **Đúng** — phần này dự đoán chuẩn |
+| `LUT_core`/`LUT_total` | +70–90 % (≈2400–2850) | **2195 / 2313** (+52.7 %/+48.7 %) | Đúng chiều, sai độ lớn — tăng ít hơn dự đoán |
+| `FF_core`/`FF_total` | không đổi | **731 / 1516** (~không đổi) | Đúng |
+| `cycles_per_block` | 5 (đúng công thức mục 6.2) | 5 | Đúng — đây là phần cấu trúc thuần túy, không phụ thuộc timing |
+| `throughput_asymptotic_Mbps` | 2176–2432 (dự đoán **thấp hơn** RPC=1) | **4370.94** (**cao hơn** RPC=1 71 %) | Sai chiều — dự đoán bi quan quá mức vì dựa trên Fmax sai |
+| `Mbps_per_LUT` | ~0.76–0.97 (dự đoán rõ ràng **thấp hơn**) | **1.8897** (**cao hơn** RPC=1 15 %) | Sai chiều — RPC=2 thắng cả thông lượng lẫn hiệu suất diện tích |
+
+**Vì sao Fmax không giảm gần một nửa như dự đoán:**
+
+Đường tới hạn mới (`u_fsm/u_perm/busy_r_reg/C` →
+`u_fsm/u_perm/state_reg[129]/D`) **không** đi xuyên suốt hai
+`ascon_round` nối tiếp như mô hình dự đoán ở mục 6.4 giả định. Vết
+đường đi thật: `busy_r` → `done_r_i_3` (mux tính `perm_start`) →
+`eff_idx[2]` → `g_double_round.u_round0/s1[2]` (mới đi được một phần
+lớp tuyến tính của **vòng thứ nhất**) → `g_double_round.m1[2]` (đầu
+vào vòng thứ hai) → `g_double_round.u_round1/s2[2]` (lớp phi tuyến
+của **vòng thứ hai**) → mux ghi thanh ghi trạng thái. Đây là **một
+bit cụ thể** có độ sâu tổ hợp thấp hơn nhiều so với đường tới hạn dài
+nhất có thể có trên lý thuyết (đi trọn cả S-box + tuyến tính của cả
+hai vòng) — dự đoán ở mục 6.4 đã sai vì mặc định (không kiểm chứng)
+rằng đường tới hạn cũ sẽ "nối dài gấp đôi" bằng cách nối thêm nguyên
+một `ascon_round` thứ hai vào đúng chỗ nó dừng, trong khi thực tế
+route/logic tối ưu tìm ra một đường xuyên qua ranh giới vòng 1→vòng 2
+ngắn hơn nhiều (chỉ 6 mức thay vì ~8), và báo cáo utilization còn ghi
+chú rõ "cross-hierarchy LUT combining" — công cụ tổng hợp đã gộp/tối
+ưu logic xuyên qua ranh giới hai instance `ascon_round`, chứ không
+giữ nguyên chúng như hai khối đen tách biệt đặt cạnh nhau như mô hình
+dự đoán hình dung.
+
+**Phần dự đoán đúng — tỉ lệ logic/route**: giả thuyết cốt lõi ở mục
+6.4 ("mỗi mức logic FPGA luôn kéo theo route, nên tỉ lệ logic/route
+được dự đoán giữ nguyên xấp xỉ dù độ sâu logic tăng") **được xác
+nhận đúng**: 21.5 %/78.5 % so với 21.6 %/78.4 % của RPC=1, gần như
+không đổi. Điều dự đoán sai không phải bản chất vật lý (mỗi mức logic
+vẫn kéo theo ~0.7–0.9 ns route, tỉ lệ ~1/4–1/5 logic so với route ở
+cả hai kiến trúc) mà là **số mức logic thực tế trên đường tới hạn
+mới tăng ít hơn nhiều so với giả định nhân đôi ngây thơ** (6 so với 8
+mức dự đoán, so với 4 mức của RPC=1) — vì đường tới hạn mới xuất phát
+từ một tổ hợp khác (mux điều khiển `perm_start`/`eff_idx`) chứ không
+phải lặp lại y hệt đường tới hạn cũ nối dài gấp đôi.
+
+**Kết luận thực nghiệm** (ngược với dự đoán bi quan ở mục 6.5):
+`ROUNDS_PER_CYCLE=2` **thắng tuyệt đối** RPC=1 trên cả hai trục —
+thông lượng bất đối xứng cao hơn 71 % (4370.94 so với 2556.16 Mbps)
+**và** hiệu suất diện tích cao hơn 15 % (1.8897 so với 1.6428
+Mbps/LUT) — vì Fmax chỉ giảm 5 % (không phải ~50 % như dự đoán) trong
+khi số chu kỳ/khối giảm đúng 44 % (5/9) như dự đoán cấu trúc thuần
+túy ở mục 6.2. Ngưỡng hòa vốn 99.85 MHz nêu ở mục 6.5 bị vượt xa (Fmax
+thật cao hơn ngưỡng đó 71 %). Bài học: với thiết kế mà đường tới hạn
+đã route-dominated (78 % route ngay ở RPC=1), việc nhân đôi logic tổ
+hợp trong `generate` không nhất thiết nhân đôi đường tới hạn thật —
+công cụ P&R có thể tìm ra đường đi ngắn hơn nhiều so với "nối 2 khối
+đen tổ hợp lại với nhau" nếu không có ranh giới thanh ghi ngăn nó tối
+ưu xuyên qua các instance.

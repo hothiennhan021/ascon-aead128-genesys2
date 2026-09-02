@@ -1,11 +1,27 @@
 // Unit testbench for ascon_perm: loads the all-zero state, runs p12
-// then p8, and compares state_o after each clock cycle against the
-// per-round golden dumps from model/ascon_model.py (--dump-p12 /
-// --dump-p8), captured in golden_p12.hex / golden_p8.hex.
+// then p8, and compares state_o against the per-round golden dumps
+// from model/ascon_model.py (--dump-p12 / --dump-p8), captured in
+// golden_p12.hex / golden_p8.hex.
+//
+// RPC_TB mirrors the DUT's ROUNDS_PER_CYCLE default, both driven by
+// the same `ROUNDS_PER_CYCLE compile-time macro (see Makefile: -D
+// ROUNDS_PER_CYCLE=2, and rtl/core/ascon_perm.v) -- state_o is only
+// ever visible once per clock cycle, i.e. once every RPC_TB rounds,
+// so the checked golden index and the per-run cycle count both scale
+// by RPC_TB (see docs/uarch.md section 6: p12/p8 round counts are
+// always even, so this division is always exact).
 
 `timescale 1ns/1ps
 
+`ifdef ROUNDS_PER_CYCLE
+    `define RPC_TB_DEFAULT `ROUNDS_PER_CYCLE
+`else
+    `define RPC_TB_DEFAULT 1
+`endif
+
 module tb_perm;
+
+    localparam RPC_TB = `RPC_TB_DEFAULT;
 
     reg clk;
     reg rst_n;
@@ -64,23 +80,23 @@ module tb_perm;
             @(negedge clk);
             start = 1'b0;
 
-            for (i = 1; i <= nrounds; i = i + 1) begin
+            for (i = 1; i <= nrounds / RPC_TB; i = i + 1) begin
                 if (rstart == 4'd4) begin
-                    expected = {mem12[i*5+0], mem12[i*5+1], mem12[i*5+2],
-                                mem12[i*5+3], mem12[i*5+4]};
+                    expected = {mem12[(i*RPC_TB)*5+0], mem12[(i*RPC_TB)*5+1], mem12[(i*RPC_TB)*5+2],
+                                mem12[(i*RPC_TB)*5+3], mem12[(i*RPC_TB)*5+4]};
                 end else begin
-                    expected = {mem8[i*5+0], mem8[i*5+1], mem8[i*5+2],
-                                mem8[i*5+3], mem8[i*5+4]};
+                    expected = {mem8[(i*RPC_TB)*5+0], mem8[(i*RPC_TB)*5+1], mem8[(i*RPC_TB)*5+2],
+                                mem8[(i*RPC_TB)*5+3], mem8[(i*RPC_TB)*5+4]};
                 end
                 checks = checks + 1;
                 if (state_o !== expected) begin
                     errors = errors + 1;
                     $display("FAIL perm rstart=%0d round=%0d got=%h exp=%h",
-                              rstart, i, state_o, expected);
+                              rstart, i*RPC_TB, state_o, expected);
                 end else begin
-                    $display("PASS perm rstart=%0d round=%0d", rstart, i);
+                    $display("PASS perm rstart=%0d round=%0d", rstart, i*RPC_TB);
                 end
-                if (i == nrounds) begin
+                if (i == nrounds / RPC_TB) begin
                     if (done !== 1'b1) begin
                         errors = errors + 1;
                         $display("FAIL perm rstart=%0d done not asserted on last round", rstart);
