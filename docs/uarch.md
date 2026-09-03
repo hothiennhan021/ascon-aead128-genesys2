@@ -188,7 +188,7 @@ Ghi chú:
 - `SOFT_RESET` và `NOP` xử lý trong 1 chu kỳ tại `S_IDLE`, không đáng
   kể trong ngân sách.
 
-### 3.1. Ngân sách chu kỳ khi `ROUNDS_PER_CYCLE=2`
+### 3.1. Ngân sách chu kỳ khi `ROUNDS_PER_CYCLE` > 1
 
 Kiến trúc khảo sát thứ hai (bước 9 quy trình làm việc, chi tiết dự
 đoán/so sánh ở mục 6) chạy 2 vòng hoán vị mỗi chu kỳ: `p12` còn 6 chu
@@ -225,6 +225,19 @@ Không giảm đúng một nửa vì phần chu kỳ điều khiển cố địn
 (`S_LOAD`/`S_XOR_IN`/`S_INIT_KEYXOR`/`S_FIN_KEYXOR`/`S_FIN_TAGXOR`)
 không co lại theo `ROUNDS_PER_CYCLE` — chỉ riêng số chu kỳ chạy trong
 `S_PERM` (`p8`/`p12`) mới giảm đúng một nửa.
+
+**Tổng quát cho `ROUNDS_PER_CYCLE=R` bất kỳ chia hết 12 và 8** (R=1,2,4
+đều thỏa — mục 6.1): `p12` còn `12/R` chu kỳ, `p8` còn `8/R` chu kỳ,
+`INIT=FINAL=2+12/R`, mỗi khối không cuối `=1+8/R`:
+
+```
+N_cycle_R(A, T) = 2*(2 + 12/R) + (1+8/R)*A + (1+8/R)*(T-1) + 1
+                = (3 + 24/R) + (1 + 8/R)*(A + T)
+```
+
+Với R=4: `INIT=FINAL=2+3=5`, mỗi khối không cuối `=1+2=3`,
+`N_cycle_4(A,T) = 11 + 3*(A+T)` (ví dụ AD rỗng/PT rỗng: `11+3=14`,
+so với 29 ở RPC=1 và 17 ở RPC=2).
 
 ---
 
@@ -553,3 +566,110 @@ tổ hợp trong `generate` **có thể** nhân đôi đúng số mức logic tr
 đường tới hạn (đã xảy ra ở đây, 3→6) mà **vẫn không** nhân đôi độ trễ
 thật — vì route của FPGA phụ thuộc vào loại tín hiệu/mức fanout cụ
 thể trên từng đường đi, không phải hằng số nhân theo số mức logic.
+
+*(Số liệu RPC=1 ở mục 6.6 — 179.73 MHz, chu kỳ 5.6 ns, đường tới hạn
+3 mức logic route-dominated — là kết quả đo bằng lưới chu kỳ thô ban
+đầu, trước khi `scripts/sweep_fmax.tcl` được viết lại thành quy trình
+hai giai đoạn thô/mịn có lưới 0.1 ns nhất quán giữa các kiến trúc.
+Lưới mới đo lại RPC=1 cho kết quả chính xác hơn — 182.25 MHz, chu kỳ
+5.5 ns — và phát hiện đường tới hạn thật ở mức chu kỳ này KHÔNG phải
+đường tới hạn round-datapath nói trên nữa, mà là một đường hoàn toàn
+khác. Xem mục 7 để có số liệu và phân tích cập nhật, nhất quán giữa
+cả ba kiến trúc `ROUNDS_PER_CYCLE=1/2/4`.)*
+
+---
+
+## 7. Ba điểm dữ liệu Pareto: `ROUNDS_PER_CYCLE` ∈ {1, 2, 4}
+
+Mục này ứng với bước 9 quy trình làm việc ("bảng PPA và biểu đồ
+Pareto"). Số liệu lấy từ `reports/ppa.csv` (ba dòng `1rpcc`/`2rpcc`/
+`4rpcc`) và `reports/timing_critical_rpc{1,2,4}.rpt`, đo bằng cùng
+một quy trình quét Fmax hai giai đoạn (thô ước lượng sau `place_design`
+để khoanh vùng, mịn có `phys_opt_design`+`route_design` trên lưới chu
+kỳ bội số 0.1 ns để ba kiến trúc nhất quán) trong `scripts/sweep_fmax.tcl`.
+
+### 7.1. Bảng PPA ba điểm
+
+| | RPC=1 | RPC=2 | RPC=4 |
+|---|---|---|---|
+| Chu kỳ đã chọn / WNS | 5.5 ns / 0.013 ns | 6.0 ns / 0.143 ns | 11.2 ns / 0.060 ns |
+| `Fmax` | 182.25 MHz | 170.74 MHz | 89.77 MHz |
+| `LUT_core` / `LUT_total` | 1437 / 1555 | 2195 / 2313 | 3447 / 3565 |
+| `FF_core` / `FF_total` | 732 / 1517 | 731 / 1516 | 730 / 1515 |
+| `cycles_per_block` | 9 | 5 | 3 |
+| `throughput_asymptotic_Mbps` | 2592.00 | 4370.94 | 3830.19 |
+| `throughput_16B_packet_Mbps` | 613.89 | 993.40 | 820.75 |
+| `Mbps_per_LUT` | 1.6669 | 1.8897 | 1.0743 |
+
+### 7.2. Xu hướng `Mbps/LUT` — tăng rồi **đảo chiều giảm**, không phải bão hòa
+
+```
+RPC=1 -> RPC=2:  1.6669 -> 1.8897   (+13.4 %)
+RPC=2 -> RPC=4:  1.8897 -> 1.0743   (-43.2 %)
+RPC=1 -> RPC=4:  1.6669 -> 1.0743   (-35.5 %, THAP HON CA RPC=1)
+```
+
+Đây **không phải hiện tượng bão hòa** (đường cong phẳng dần) mà là
+**đảo chiều thật sự**: RPC=4 không chỉ tăng chậm lại, nó tệ hơn cả
+điểm khởi đầu RPC=1. Cơ chế: `cycles_per_block` giảm đều đặn theo cấp
+số nhân ngược (9→5→3, tức ×0.56 rồi ×0.6), nhưng `LUT_total` tăng
+nhanh hơn tuyến tính ở bước RPC=2→4 (+54.1 %, so với +48.7 % ở bước
+RPC=1→2) **trong khi Fmax sụp mạnh** (−47.4 % so với chỉ −6.3 % ở bước
+trước) — logic tổ hợp bốn `ascon_round` nối tiếp (11 mức logic, mục
+7.3) vừa tốn nhiều LUT hơn tuyến tính vừa kéo Fmax xuống gần một nửa,
+áp đảo hoàn toàn phần lợi từ số chu kỳ/khối thấp hơn. Thông lượng
+tuyệt đối cũng vậy: RPC=4 (3830.19 Mbps) thấp hơn RPC=2 (4370.94 Mbps)
+dù vẫn cao hơn RPC=1 — nghĩa là **RPC=2 là điểm tối ưu Pareto** trong
+ba điểm đã đo, không phải RPC=4. Nếu mục tiêu là thông lượng/diện
+tích, tăng `ROUNDS_PER_CYCLE` quá điểm này phản tác dụng với thiết kế
+này trên `xc7a35tcpg236-1`.
+
+### 7.3. Tỉ lệ logic/route — dịch chuyển dần, và một bất ngờ ở RPC=1
+
+Đường tới hạn RPC=2 và RPC=4 (đo được ở lưới cuối) đều cùng **loại**
+— xuất phát từ vùng điều khiển/mux nạp thanh ghi trạng thái, đi qua
+chuỗi `ascon_round` nối tiếp (mục 6.6 đã mô tả cơ chế này cho RPC=2):
+
+| | RPC=2 (6.0 ns) | RPC=4 (11.2 ns) |
+|---|---|---|
+| Mức logic | 6 | 11 |
+| Logic | 1.262 ns (21.46 %) | 1.820 ns (16.42 %) |
+| Route | 4.618 ns (78.54 %) | 9.262 ns (83.58 %) |
+
+Xu hướng nhất quán: **route càng chiếm ưu thế hơn khi RPC càng lớn**
+(78.5 %→83.6 %, logic 21.5 %→16.4 %) — hợp lý, vì chuỗi tổ hợp càng
+dài càng phải băng qua khoảng cách vật lý lớn hơn trên die, trong khi
+mỗi mức logic (LUT) tự thân không đổi nhiều về độ trễ.
+
+**Nhưng RPC=1 không nối tiếp được xu hướng này** — đường tới hạn thật
+ở chu kỳ 5.5 ns (`reports/timing_critical_rpc1.rpt`) **không phải**
+đường round-datapath nói trên nữa, mà là một chuỗi hoàn toàn khác:
+
+```
+Source:      tag_in_r_reg[22]/C
+Destination: u_fsm/dout_r_reg[104]/CE
+Data Path Delay: 5.211 ns (logic 2.558 ns = 49.09 %, route 2.653 ns = 50.91 %)
+Logic Levels: 13 (CARRY4=10 LUT4=1 LUT6=2)
+```
+
+Đây chính là chuỗi `CARRY4` từng ghi trong `docs/BUGS.md`/commit
+"Rewrite byte-mask logic as case: -258 LUT; investigate CARRY4 chain"
+— sinh ra từ phép so sánh 128-bit `tag`/`tag_in` tương tác với logic
+byte-mask trong `ascon_aead_fsm`. Ở chu kỳ thoải mái hơn (5.6–6.0 ns),
+đường round-datapath (mục 6.4/6.6) vẫn là nút thắt; nhưng khi ép chu
+kỳ xuống tới giới hạn thật của RPC=1 (5.5 ns), round-datapath của RPC=1
+(chỉ 1 `ascon_round`, rất ngắn) đã đủ nhanh để **nhường vị trí nút
+thắt cho chuỗi CARRY4**, vốn gần như không đổi theo `ROUNDS_PER_CYCLE`
+(không nằm trong `ascon_perm`). Vì CARRY4 trong cùng cột slice có độ
+trễ định tuyến giữa các tầng gần như bằng 0, tỉ lệ logic/route của
+đường này cân bằng (49/51 %) — khác hẳn kiểu route-dominated (~78–84 %)
+của round-datapath ở RPC=2/4.
+
+**Hệ quả cho khảo sát kiến trúc**: trần Fmax của RPC=1 do một nút thắt
+*ngoài* `ascon_perm` quyết định (chuỗi so sánh tag/byte-mask trong
+FSM), trong khi trần Fmax của RPC=2 và RPC=4 do chính `ascon_perm`
+quyết định (round-datapath). Nói cách khác, nếu tiếp tục khảo sát các
+điểm `ROUNDS_PER_CYCLE` khác trong tương lai, chuỗi CARRY4 này là một
+ứng viên nút thắt tiềm ẩn cần theo dõi lại một khi round-datapath được
+rút ngắn đủ nhiều (ví dụ nếu sau này tối ưu lại `ascon_round`) — nó
+chưa từng được tối ưu vì trước nay luôn bị round-datapath che khuất.
