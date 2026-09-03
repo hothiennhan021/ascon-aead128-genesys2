@@ -1,4 +1,6 @@
 build/
+__pycache__/
+*.pyc
 # "reports/*" (khong phai "reports/") de git van duyet duoc vao trong
 # thu muc va ap dung ngoai le "!reports/ppa.csv" ben duoi -- git khong
 # the "un-ignore" mot file neu chinh thu muc cha cua no bi loai tru.

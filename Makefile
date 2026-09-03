@@ -13,6 +13,8 @@ RTL_CORE := rtl/core/ascon_sbox.v rtl/core/ascon_linear.v \
             rtl/core/ascon_round.v rtl/core/ascon_perm.v \
             rtl/core/ascon_aead_fsm.v
 RTL_IP   := rtl/ip/ascon_apb.v
+RTL_DEMO := rtl/demo/uart_rx.v rtl/demo/uart_tx.v rtl/demo/apb_master.v \
+            rtl/demo/cmd_fsm.v rtl/demo/top_board.v
 BUILD    := build
 KAT      := vectors/LWC_AEAD_KAT_128_128.txt
 
@@ -28,7 +30,7 @@ RPC := 1
 # docs/uarch.md muc 7 "Khao sat theo dong chip".
 PART := xc7a35tcpg236-1
 
-.PHONY: all model unit kat regress synth impl report gatesim clean help
+.PHONY: all model unit kat regress synth impl report gatesim demo_sim bitstream clean help
 
 help:
 	@echo.
@@ -40,6 +42,8 @@ help:
 	@echo   make impl      - implement va quet Fmax
 	@echo   make report    - bao cao PPA sau route (report_utilization -hierarchical)
 	@echo   make gatesim   - mo phong gate-level functional + do cong suat (SAIF) + timing tinh
+	@echo   make demo_sim  - mo phong rtl/demo/top_board.v (UART BFM + vai vector KAT) bang Icarus
+	@echo   make bitstream - tong hop day du + implement + xuat bitstream demo Genesys 2
 	@echo   make clean     - xoa file tam
 	@echo.
 	@echo   Them RPC=2 vao unit/kat/regress/synth de chay kien truc
@@ -105,6 +109,20 @@ report:
 # gate-level TIMING sim/SDF o ban cai Vivado nay) ---
 gatesim:
 	vivado -mode batch -source scripts/gatesim.tcl -tclargs $(RPC)
+
+# --- Demo board (Genesys 2): mo phong bang Icarus, khong dung Vivado ---
+# -DSIM_NO_MMCM: bo qua IBUFDS/MMCME2_BASE (UNISIM, khong co model cho
+# Icarus) trong rtl/demo/top_board.v -- xem chu thich dau file do va
+# tb/directed/tb_top_board.v.
+demo_sim:
+	@if not exist $(BUILD) mkdir $(BUILD)
+	$(IVERILOG) -g2005 -DROUNDS_PER_CYCLE=1 -DSIM_NO_MMCM -o $(BUILD)/tb_top_board.vvp $(RTL_CORE) $(RTL_IP) $(RTL_DEMO) tb/directed/tb_top_board.v
+	$(VVP) $(BUILD)/tb_top_board.vvp
+
+# --- Demo board (Genesys 2): tong hop day du + implement + bitstream ---
+# (can Vivado that; xem scripts/build_bitstream.tcl)
+bitstream:
+	vivado -mode batch -source scripts/build_bitstream.tcl
 
 clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)
