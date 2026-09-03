@@ -4,6 +4,7 @@ build/
 # the "un-ignore" mot file neu chinh thu muc cha cua no bi loai tru.
 reports/*
 !reports/ppa.csv
+!reports/ppa_multidevice.csv
 vivado*.jou
 vivado*.log
 vivado_*.backup.*

@@ -673,3 +673,117 @@ quyết định (round-datapath). Nói cách khác, nếu tiếp tục khảo s�
 ứng viên nút thắt tiềm ẩn cần theo dõi lại một khi round-datapath được
 rút ngắn đủ nhiều (ví dụ nếu sau này tối ưu lại `ascon_round`) — nó
 chưa từng được tối ưu vì trước nay luôn bị round-datapath che khuất.
+
+## 8. Khảo sát theo dòng chip: Artix-7 / Kintex-7 / Virtex-7 (`ROUNDS_PER_CYCLE = 1`)
+
+### 8.1. Bối cảnh và giới hạn thí nghiệm
+
+Cùng một RTL, cùng một ràng buộc (`constraints/ascon_apb_ooc.xdc` không
+đổi), cùng kiến trúc `ROUNDS_PER_CYCLE = 1` — chỉ đổi `part_name` truyền
+vào `synth_design`. `scripts/synth_ooc.tcl`, `scripts/sweep_fmax.tcl`
+và `scripts/report_ppa.tcl` được sửa để nhận tham số part thứ hai (mặc
+định vẫn `xc7a35tcpg236-1`, giữ nguyên tên checkpoint/report cũ khi
+dùng mặc định); part khác mặc định thì hậu tố đổi thành
+`<part>_rpc<N>` để không ghi đè lẫn nhau. Ba part đo:
+
+| Part | Dòng chip | Board tham chiếu | Speed grade |
+|---|---|---|---|
+| `xc7a35tcpg236-1` | Artix-7 | Basys 3 | **-1** |
+| `xc7k325tffg900-2` | Kintex-7 | Genesys 2 | **-2** |
+| `xc7vx485tffg1761-2` | Virtex-7 | VC707 | **-2** |
+
+Chú ý ngay: Artix-7 đo ở speed grade **-1** (chậm nhất trong họ, xem
+docs/spec.md mục 5), còn Kintex-7/Virtex-7 đo ở **-2**. Đây là hai biến
+trộn lẫn (dòng chip *và* speed grade cùng đổi một lúc) — mục 8.4 tách
+riêng ảnh hưởng của speed grade bằng cách dùng cặp Kintex/Virtex (cùng
+`-2`) làm đối chứng.
+
+### 8.2. Bảng PPA ba dòng chip
+
+Số liệu đầy đủ trong `reports/ppa_multidevice.csv`, `cycles_per_block`
+giữ nguyên 9 (thuộc về vi kiến trúc FSM, không đổi theo part):
+
+| | Artix-7 (-1) | Kintex-7 (-2) | Virtex-7 (-2) |
+|---|---|---|---|
+| Chu kỳ đã chọn / WNS | 5.5 ns / 0.013 ns | 3.8 ns / 0.511 ns | 4.0 ns / 0.343 ns |
+| `Fmax` | 182.25 MHz | **304.04 MHz** | 273.45 MHz |
+| `LUT_core` / `LUT_total` | 1437 / 1555 | 1439 / 1557 | 1440 / 1558 |
+| `FF_total` | 1517 | 1517 | 1517 |
+| `throughput_Mbps` | 2592.00 | 4324.12 | 3889.07 |
+| `Mbps_per_LUT` | 1.6669 | **2.7772** | 2.4962 |
+
+### 8.3. Tài nguyên logic (LUT/FF) không co giãn theo dòng chip
+
+`LUT_total` chỉ dao động 1555 → 1557 → 1558 (< 0.2 % trên cả ba part),
+`FF_total` **giống hệt nhau tuyệt đối** (1517 cả ba). Đây không phải
+trùng hợp: Artix-7, Kintex-7, Virtex-7 đều dùng chung kiến trúc slice
+7-series (LUT6 hai đầu ra, 2 FF/LUT, cùng nguyên thủy `CARRY4`) — khác
+nhau ở số lượng slice, DSP, BRAM, transceiver tốc độ cao và **tốc độ
+bin của die**, chứ không khác nhau ở logic slice cơ bản. Với một IP
+thuần logic, không dùng BRAM/DSP như đồ án này (buộc theo CLAUDE.md mục
+5), phần diện tích tổng hợp ra gần như không đổi khi đổi dòng chip —
+sai lệch 1-3 LUT còn lại chỉ là nhiễu từ thứ tự quyết định của
+`synth_design` (tie-breaking khi ánh xạ logic), không phải khác biệt
+kiến trúc thật. **Kết luận: thiết kế này không co giãn tài nguyên theo
+dòng chip — toàn bộ chênh lệch giữa ba part nằm ở Fmax.**
+
+### 8.4. Cùng một nút thắt CARRY4 xuất hiện lại ở cả ba dòng chip — chênh lệch route tăng theo kích thước die
+
+Đường tới hạn thật ở cả ba part (`reports/timing_critical_<part>_rpc1.rpt`)
+là **cùng một họ đường** đã tìm thấy ở mục 7.3 cho Artix-7: chuỗi
+`CARRY4` từ so sánh `key_r`/`tag_in_r` 128-bit nạp vào
+`u_fsm/dout_r_reg[*]/CE`, không phải round-datapath của `ascon_perm`:
+
+| | Artix-7 (5.5 ns) | Kintex-7 (3.8 ns) | Virtex-7 (4.0 ns) |
+|---|---|---|---|
+| Mức logic | 13 (CARRY4=10) | 12 (CARRY4=9) | 11 (CARRY4=8) |
+| Logic | 2.558 ns (49.09 %) | 1.248 ns (41.56 %) | 1.090 ns (32.65 %) |
+| Route | 2.653 ns (50.91 %) | 1.755 ns (58.44 %) | 2.248 ns (67.35 %) |
+
+Bằng chứng thêm cho luận điểm ở mục 8.3: đây vẫn là *cùng một nút
+thắt vi kiến trúc*, không phải một đường tới hạn khác xuất hiện do đổi
+part. Nhưng tỉ lệ route tăng dần rõ rệt theo kích thước die — 51 %
+(Artix, `xc7a35t`, nhỏ nhất) → 58 % (Kintex, `xc7k325t`) → 67 % (Virtex,
+`xc7vx485t`, lớn nhất) — dù số mức logic CARRY4 còn *giảm* (10→9→8).
+Với một IP nhỏ (~1550 LUT) đặt trong một die ngày càng lớn hơn, khoảng
+cách vật lý trung bình giữa các tầng của cùng một chuỗi carry ngày
+càng xa hơn — route chiếm ưu thế nhiều hơn dù bản thân chuỗi logic
+ngắn lại. Đây là lý do Fmax không chỉ đơn thuần theo tốc độ bin: diện
+tích/mật độ đặt chỗ khả dụng cho một thiết kế nhỏ trên die lớn cũng
+ảnh hưởng đến độ trễ route thực đo.
+
+### 8.5. Tách ảnh hưởng speed grade khỏi ảnh hưởng dòng chip
+
+Không thể tách tuyệt đối với 3 điểm đo hiện có (không có cặp cùng die
+khác speed grade), nhưng cặp **Kintex-7/Virtex-7 (cùng speed grade -2,
+khác dòng chip)** cho một phép đối chứng gián tiếp khá chặt:
+
+```
+Kintex-7 (-2) -> Virtex-7 (-2), cung speed grade:
+    304.04 MHz -> 273.45 MHz   (-10.06 %, Virtex CHAM HON)
+
+Artix-7 (-1) -> Kintex-7 (-2), cung ho 7-series, khac speed grade:
+    182.25 MHz -> 304.04 MHz   (+66.83 %)
+
+Artix-7 (-1) -> Virtex-7 (-2), cung ho 7-series, khac speed grade:
+    182.25 MHz -> 273.45 MHz   (+50.04 %)
+```
+
+Ở cùng speed grade `-2`, đổi dòng chip (Kintex → Virtex) làm Fmax
+**giảm** 10 %, dù Virtex-7 là die "cao cấp" hơn — khớp với cơ chế route
+ở mục 8.4 (die lớn hơn → route dài hơn cho một IP nhỏ). Nói cách khác,
+riêng yếu tố dòng chip/microarchitecture, giữ nguyên speed grade,
+**không giải thích được** mức tăng 50-67 % quan sát được khi so Artix-7
+với hai dòng kia — nếu có, nó còn kéo Fmax xuống (Virtex chậm hơn
+Kintex). Suy luận hợp lý nhất: gần như toàn bộ mức tăng Fmax khi rời
+Artix-7 sang Kintex-7/Virtex-7 đến từ **bin tốc độ transistor cao hơn**
+(`-2` so với `-1`), không phải từ bản thân dòng chip. Đây là lý do
+docs/spec.md mục 5 nhấn mạnh `-1` là "mức bảo thủ nhất": số Fmax của
+Artix-7 trong toàn bộ tài liệu này thấp hơn thực tế mà cùng cấu trúc
+này sẽ đạt được nếu chạy trên một con chip Artix-7 speed grade nhanh
+hơn (`-2`/`-3`) — hoàn toàn tách biệt với việc đổi sang dòng chip khác.
+
+**Giới hạn:** để tách bạch tuyệt đối (không suy luận gián tiếp qua cặp
+đối chứng), cần thêm một điểm đo cùng die khác speed grade, ví dụ
+`xc7a35tcpg236-2` — chưa đo trong đồ án này, để ngỏ như một hướng kiểm
+chứng thêm nếu có thời gian.

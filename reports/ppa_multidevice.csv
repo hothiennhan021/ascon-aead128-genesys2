@@ -1,0 +1,4 @@
+part,family,speed_grade,LUT_core,LUT_total,FF_total,Fmax_MHz,throughput_Mbps,Mbps_per_LUT
+xc7a35tcpg236-1,Artix-7,-1,1437,1555,1517,182.25,2592.00,1.6669
+xc7k325tffg900-2,Kintex-7,-2,1439,1557,1517,304.04,4324.12,2.7772
+xc7vx485tffg1761-2,Virtex-7,-2,1440,1558,1517,273.45,3889.07,2.4962

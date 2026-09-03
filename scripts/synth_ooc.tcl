@@ -3,14 +3,18 @@
 #
 # Chay bang: vivado -mode batch -source scripts/synth_ooc.tcl
 # hoac:      vivado -mode batch -source scripts/synth_ooc.tcl -tclargs 2
-# (so cuoi la ROUNDS_PER_CYCLE truyen qua read_verilog -define, doc boi
+# hoac:      vivado -mode batch -source scripts/synth_ooc.tcl -tclargs 1 xc7k325tffg900-2
+# (arg 1 la ROUNDS_PER_CYCLE truyen qua read_verilog -define, doc boi
 # macro tien xu ly `ROUNDS_PER_CYCLE trong rtl/core/ascon_perm.v, mac
-# dinh 1 -- xem docs/uarch.md muc 6. make synth/impl RPC=2 goi dung
-# cach nay.)
+# dinh 1 -- xem docs/uarch.md muc 6. arg 2 la ten part Vivado, mac dinh
+# xc7a35tcpg236-1 -- doi de khao sat kien truc tren dong chip khac,
+# xem docs/uarch.md muc 7 "Khao sat theo dong chip". make synth/impl
+# RPC=2 PART=... goi dung cach nay.)
 
 set_param general.maxThreads 8
 
-set part_name   xc7a35tcpg236-1
+set default_part xc7a35tcpg236-1
+set part_name   $default_part
 set top_module  ascon_apb
 set report_dir  reports
 
@@ -18,10 +22,19 @@ set rounds_per_cycle 1
 if {$argc > 0} {
     set rounds_per_cycle [lindex $argv 0]
 }
+if {$argc > 1} {
+    set part_name [lindex $argv 1]
+}
 
-# Hau to theo RPC de hai kien truc khong ghi de checkpoint/report cua
-# nhau (can giu ca hai de chup anh bao cao va doi chieu ve sau).
-set rpc_suffix "rpc${rounds_per_cycle}"
+# Hau to theo RPC (va theo part, neu khac mac dinh Artix-7) de cac
+# kien truc/part khong ghi de checkpoint/report cua nhau. Giu nguyen
+# hau to cu "rpc<N>" khi part la mac dinh de khong dung cham den so
+# lieu Artix-7 da co (reports/*_rpc<N>.* hien huu, reports/ppa.csv).
+if {$part_name eq $default_part} {
+    set rpc_suffix "rpc${rounds_per_cycle}"
+} else {
+    set rpc_suffix "${part_name}_rpc${rounds_per_cycle}"
+}
 
 set rtl_files {
     rtl/core/ascon_sbox.v
@@ -52,4 +65,4 @@ report_utilization -file [file join $report_dir "report_utilization_${rpc_suffix
 report_utilization -hierarchical -file [file join $report_dir "report_utilization_hierarchical_${rpc_suffix}.rpt"]
 write_checkpoint -force [file join $report_dir "post_synth_${rpc_suffix}.dcp"]
 
-puts "=== SYNTH OOC DONE: $top_module tren $part_name (ROUNDS_PER_CYCLE=$rounds_per_cycle) ==="
+puts "=== SYNTH OOC DONE: $top_module tren $part_name (ROUNDS_PER_CYCLE=$rounds_per_cycle, suffix=$rpc_suffix) ==="

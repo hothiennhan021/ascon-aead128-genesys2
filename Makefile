@@ -23,6 +23,11 @@ KAT      := vectors/LWC_AEAD_KAT_128_128.txt
 # tham so dong lenh.
 RPC := 1
 
+# Part Vivado dung cho synth/impl/report (mac dinh Artix-7 tren Basys
+# 3). Ghi de bang: make synth PART=xc7k325tffg900-2 -- xem
+# docs/uarch.md muc 7 "Khao sat theo dong chip".
+PART := xc7a35tcpg236-1
+
 .PHONY: all model unit kat regress synth impl report gatesim clean help
 
 help:
@@ -39,6 +44,8 @@ help:
 	@echo.
 	@echo   Them RPC=2 vao unit/kat/regress/synth de chay kien truc
 	@echo   ROUNDS_PER_CYCLE=2 (mac dinh RPC=1) - xem docs/uarch.md muc 6.
+	@echo   Them PART=xc7k325tffg900-2 vao synth/impl/report de doi part
+	@echo   Vivado (mac dinh xc7a35tcpg236-1) - xem docs/uarch.md muc 7.
 	@echo.
 
 all: model regress
@@ -81,15 +88,15 @@ regress: unit kat
 # docs/uarch.md muc 6). Checkpoint/report ra co hau to _rpc<N> de hai
 # kien truc khong ghi de len nhau.
 synth:
-	vivado -mode batch -source scripts/synth_ooc.tcl -tclargs $(RPC)
+	vivado -mode batch -source scripts/synth_ooc.tcl -tclargs $(RPC) $(PART)
 
 # --- Buoc 7: implement va quet Fmax (can co reports/post_synth_rpc$(RPC).dcp) ---
 impl: synth
-	vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs $(RPC)
+	vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs $(RPC) $(PART)
 
 # --- Buoc 7: bao cao PPA sau route (can co reports/post_route_rpc$(RPC).dcp) ---
 report:
-	vivado -mode batch -source scripts/report_ppa.tcl -tclargs $(RPC)
+	vivado -mode batch -source scripts/report_ppa.tcl -tclargs $(RPC) $(PART)
 
 # --- Buoc 8: gate-level functional sim + do cong suat bang SAIF +
 # bang chung timing tinh (can co reports/post_route_rpc$(RPC).dcp; hien

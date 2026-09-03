@@ -7,18 +7,31 @@
 #
 # Chay bang: vivado -mode batch -source scripts/report_ppa.tcl
 # hoac:      vivado -mode batch -source scripts/report_ppa.tcl -tclargs 2
-# (so cuoi la ROUNDS_PER_CYCLE, mac dinh 1 -- phai khop voi RPC da
-# dung khi chay "make impl" de co dung reports/post_route_rpc<N>.dcp.
-# make report RPC=2 goi dung cach nay. Hau to rpc<N> tren moi report
-# de hai kien truc khong ghi de len nhau.)
+# hoac:      vivado -mode batch -source scripts/report_ppa.tcl -tclargs 1 xc7k325tffg900-2
+# (arg 1 la ROUNDS_PER_CYCLE, mac dinh 1; arg 2 la ten part Vivado, mac
+# dinh xc7a35tcpg236-1 -- ca hai phai khop voi cap da dung khi chay
+# "make impl" de co dung reports/post_route_<suffix>.dcp. make report
+# RPC=2 PART=... goi dung cach nay. Hau to tren moi report de cac kien
+# truc/part khong ghi de len nhau -- cung logic voi scripts/synth_ooc.tcl.)
 
 set_param general.maxThreads 8
+
+set default_part xc7a35tcpg236-1
+set part_name    $default_part
 
 set rounds_per_cycle 1
 if {$argc > 0} {
     set rounds_per_cycle [lindex $argv 0]
 }
-set rpc_suffix "rpc${rounds_per_cycle}"
+if {$argc > 1} {
+    set part_name [lindex $argv 1]
+}
+
+if {$part_name eq $default_part} {
+    set rpc_suffix "rpc${rounds_per_cycle}"
+} else {
+    set rpc_suffix "${part_name}_rpc${rounds_per_cycle}"
+}
 
 set report_dir  reports
 set post_route_dcp [file join $report_dir "post_route_${rpc_suffix}.dcp"]

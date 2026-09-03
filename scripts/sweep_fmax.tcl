@@ -3,9 +3,12 @@
 #
 # Chay bang: vivado -mode batch -source scripts/sweep_fmax.tcl
 # hoac:      vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs 2
-# (so cuoi la ROUNDS_PER_CYCLE, mac dinh 1 -- phai khop voi RPC da
-# dung khi chay "make synth" de co dung reports/post_synth_rpc<N>.dcp.
-# make impl RPC=2 goi dung cach nay.)
+# hoac:      vivado -mode batch -source scripts/sweep_fmax.tcl -tclargs 1 xc7k325tffg900-2
+# (arg 1 la ROUNDS_PER_CYCLE, mac dinh 1; arg 2 la ten part Vivado, mac
+# dinh xc7a35tcpg236-1 -- ca hai phai khop voi cap da dung khi chay
+# "make synth" / scripts/synth_ooc.tcl de suy ra dung ten checkpoint
+# reports/post_synth_<suffix>.dcp (xem logic hau to trong
+# scripts/synth_ooc.tcl). make impl RPC=2 PART=... goi dung cach nay.)
 #
 # Thuat toan (thay cho quet 12-18 chu ky co dinh -- qua cham voi kien
 # truc co duong to hop dai nhu ROUNDS_PER_CYCLE=4, moi luot route_design
@@ -54,11 +57,24 @@
 
 set_param general.maxThreads 8
 
+set default_part xc7a35tcpg236-1
+set part_name    $default_part
+
 set rounds_per_cycle 1
 if {$argc > 0} {
     set rounds_per_cycle [lindex $argv 0]
 }
-set rpc_suffix "rpc${rounds_per_cycle}"
+if {$argc > 1} {
+    set part_name [lindex $argv 1]
+}
+
+# Cung logic hau to nhu scripts/synth_ooc.tcl -- phai khop nhau de tim
+# dung checkpoint post_synth.
+if {$part_name eq $default_part} {
+    set rpc_suffix "rpc${rounds_per_cycle}"
+} else {
+    set rpc_suffix "${part_name}_rpc${rounds_per_cycle}"
+}
 
 set report_dir     reports
 set post_synth_dcp [file join $report_dir "post_synth_${rpc_suffix}.dcp"]
