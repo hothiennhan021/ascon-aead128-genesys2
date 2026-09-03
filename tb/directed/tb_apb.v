@@ -62,6 +62,24 @@ module tb_apb;
         .pslverr (pslverr)
     );
 
+    // Passive protocol monitor -- pure Verilog-2001, no SVA (see
+    // tb/sva/apb_checker.v). Watches the same bus signals the BFM
+    // drives into `dut`; never influences the DUT.
+    wire [31:0] apb_checker_violations;
+
+    apb_checker u_apb_checker (
+        .pclk            (pclk),
+        .presetn         (presetn),
+        .psel            (psel),
+        .penable         (penable),
+        .pwrite          (pwrite),
+        .paddr           (paddr),
+        .pwdata          (pwdata),
+        .prdata          (prdata),
+        .pready          (pready),
+        .violation_count (apb_checker_violations)
+    );
+
     always #5 pclk = ~pclk;
 
     reg [31:0] last_pslverr_capture;
@@ -513,10 +531,17 @@ module tb_apb;
 
         $display("PASSED apb %0d/%0d", vec_pass, N_VEC);
 
+        u_apb_checker.report_summary;
+        if (apb_checker_violations == 0)
+            $display("PASSED apb_protocol_checker 0/0");
+        else
+            $display("FAIL apb_protocol_checker %0d violation(s)", apb_checker_violations);
+
         if (errors == 0 && key_read_errors == 0 && busy_test_ran && busy_test_ok &&
             dinunder_test_ran && dinunder_test_ok && unmapped_errors == 0 &&
             reset_mid_op_ok && dinover_test_ran && dinover_test_ok &&
-            !no_reset_a_failed && !no_reset_b_failed)
+            !no_reset_a_failed && !no_reset_b_failed &&
+            apb_checker_violations == 0)
             $display("PASSED ALL");
         else
             $display("FAILED (see FAIL lines above)");
