@@ -23,7 +23,7 @@ KAT      := vectors/LWC_AEAD_KAT_128_128.txt
 # tham so dong lenh.
 RPC := 1
 
-.PHONY: all model unit kat regress synth impl report power clean help
+.PHONY: all model unit kat regress synth impl report gatesim clean help
 
 help:
 	@echo.
@@ -34,7 +34,7 @@ help:
 	@echo   make synth     - tong hop Out-of-Context bang Vivado
 	@echo   make impl      - implement va quet Fmax
 	@echo   make report    - bao cao PPA sau route (report_utilization -hierarchical)
-	@echo   make power     - do cong suat bang SAIF
+	@echo   make gatesim   - mo phong gate-level functional + do cong suat (SAIF) + timing tinh
 	@echo   make clean     - xoa file tam
 	@echo.
 	@echo   Them RPC=2 vao unit/kat/regress/synth de chay kien truc
@@ -91,9 +91,13 @@ impl: synth
 report:
 	vivado -mode batch -source scripts/report_ppa.tcl -tclargs $(RPC)
 
-# --- Buoc 8: do cong suat ---
-power:
-	vivado -mode batch -source scripts/report_power.tcl
+# --- Buoc 8: gate-level functional sim + do cong suat bang SAIF +
+# bang chung timing tinh (can co reports/post_route_rpc$(RPC).dcp; hien
+# tb/directed/tb_gatesim.v va .hex 20 vector chi khop RPC=1 -- xem ghi
+# chu dau scripts/gatesim.tcl va docs/BUGS.md ve viec khong dung duoc
+# gate-level TIMING sim/SDF o ban cai Vivado nay) ---
+gatesim:
+	vivado -mode batch -source scripts/gatesim.tcl -tclargs $(RPC)
 
 clean:
 	@if exist $(BUILD) rmdir /s /q $(BUILD)

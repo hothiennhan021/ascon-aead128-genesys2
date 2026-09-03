@@ -1,0 +1,4 @@
+architecture,LUT_core,FF_core,LUT_total,FF_total,Fmax_MHz,cycles_per_block,throughput_asymptotic_Mbps,throughput_16B_packet_Mbps,Mbps_per_LUT,power_mW
+1rpcc,1437,732,1555,1517,182.25,9,2592.00,613.89,1.6669,91.0
+2rpcc,2195,731,2313,1516,170.74,5,4370.94,993.40,1.8897,
+4rpcc,3447,730,3565,1515,89.77,3,3830.19,820.75,1.0743,

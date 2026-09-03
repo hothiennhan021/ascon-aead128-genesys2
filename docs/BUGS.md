@@ -1,5 +1,73 @@
 # Nhật ký lỗi
 
+## 2026-09-03 — Không chú thích được SDF cho gate-level timing sim (RPC=1, buoc 8)
+
+**Triệu chứng:** `xelab` (bộ mô phỏng `xsim`, Vivado 2022.2) báo lỗi
+tắt khi cố nạp SDF sinh bởi `write_sdf` từ `reports/post_route_rpc1.dcp`:
+hàng loạt `WARNING: [XSIM 43-3472/43-3467/...] Unable to find delay
+expressions for setup/hold/recovery/removal/period/width ... for module
+FDCE_default`, rồi `ERROR: [XSIM 43-3462] Unable to annotate SDF delays
+in the design.` — xảy ra đồng loạt trên **mọi** thực thể `FDCE` trong
+thiết kế, không riêng lẻ một chỗ.
+
+**Cách phát hiện:** Chạy thử `scripts/gatesim.tcl` (mở
+`post_route_rpc1.dcp`, `write_verilog -mode timesim -sdf_anno true`,
+`write_sdf`, biên dịch/elaborate bằng `xvlog`/`xelab`, chạy `xsim`) sau
+khi đã kiểm chứng testbench (`tb/directed/tb_gatesim.v`, 20 vector KAT
+chọn lọc) bằng `iverilog` trên RTL — bước rẻ này pass 20/20 nên loại
+được khả năng lỗi nằm ở testbench/tập vector trước khi đổ lỗi cho công
+cụ. Lần chạy đầu vướng một lỗi path (SDF ghi ở `reports/` nhưng
+`$sdf_annotate` sinh ra trong netlist chỉ tham chiếu *basename*, không
+kèm thư mục) — sửa bằng cách `cd` vào `reports/` trước khi gọi
+`xvlog`/`xelab`; sau khi sửa, lỗi thật ở trên mới lộ ra.
+
+**Nguyên nhân gốc:** Thư viện mô phỏng `unisims_ver` cài kèm bản Vivado
+2022.2 tại máy này (không phải thứ tự lệnh Tcl hay RTL) không có
+specify-block đầy đủ cho biến thể mặc định của `FDCE` (`FDCE_default`)
+— thiếu chính các cặp cổng mà SDF cần khớp (setup/hold giữa `CE`/`D` và
+`C`, recovery/removal quanh `CLR`, period/width trên `C`). Hướng khắc
+phục đúng là `compile_simlib -simulator xsim -family artix7 -language
+verilog -library unisim -dir C:/xsim_libs -force` để dựng lại thư viện
+mô phỏng đầy đủ từ nguồn — nhưng thử chạy thì Vivado luôn in
+`WARNING: [Vivado 12-5377] Language specific library compilation for
+IPs is not supported. By default, the libraries will be compiled for
+all languages` (tức annotate lại toàn bộ, không giới hạn được đúng
+`-language verilog` như mong muốn cho một thiết kế thuần Verilog không
+dùng IP nào), và bản thân bước "Extracting data from the IP repository"
+đã mất hơn 1 phút chưa xong — chi phí thời gian không tương xứng với
+một bước kiểm chứng phụ trong đồ án này.
+
+**Cách sửa (phương án dự phòng đã dùng):** Bỏ mô phỏng TIMING (SDF),
+thay bằng ba phần tách biệt, đều lấy từ chính `post_route_rpc1.dcp`:
+
+1. **Gate-level FUNCTIONAL sim** — `write_verilog -mode funcsim` (không
+   `-sdf_anno`, không cần thư viện mô phỏng đặc biệt) xuất netlist
+   zero-delay, chạy qua `tb_gatesim.v` (20 vector KAT) bằng `xsim` —
+   xác nhận netlist sau đặt chỗ/đi dây đúng chức năng (không xác nhận
+   được setup/hold, chỉ đúng logic).
+2. **Công suất** — xuất SAIF từ chính lần mô phỏng functional đó (SAIF
+   không cần chú thích SDF), nạp bằng `read_saif`, xuất
+   `reports/power_rpc1.rpt` qua `report_power`.
+3. **Bằng chứng timing** — dùng `report_timing_summary` (phân tích
+   tĩnh, không mô phỏng) ngay trên `post_route_rpc1.dcp` đang mở, xuất
+   `reports/timing_summary_rpc1.rpt`, thay cho việc quan sát vi phạm
+   setup/hold qua mô phỏng có trễ.
+
+Cả ba gộp trong một lần gọi `vivado -mode batch -source
+scripts/gatesim.tcl` duy nhất — xem file đó để có chi tiết lệnh.
+
+**Bài học:** Gate-level *timing* simulation (SDF) phụ thuộc vào một thư
+viện mô phỏng cài đặt sẵn ngoài tầm kiểm soát của repo — không giống
+RTL sim (`iverilog`, tự chứa) hay tổng hợp/STA (`report_timing_summary`,
+chỉ cần chính thiết kế + Vivado). Khi một bước kiểm chứng phụ thuộc môi
+trường cài đặt cục bộ theo cách không thể sửa bằng RTL/Tcl của dự án,
+nên có phương án dự phòng tách timing (đo tĩnh bằng STA, đã có sẵn từ
+`sweep_fmax.tcl`/`report_ppa.tcl`) ra khỏi functional/power (đo được
+bằng SAIF không cần SDF) thay vì cố ép cả ba vào một luồng mô phỏng có
+trễ duy nhất.
+
+---
+
 ## 2026-09-02 — Rò bản rõ khối cuối trước khi kiểm tra tag (ascon_aead_fsm)
 
 **Triệu chứng:** Khi giải mã, `dout_valid` bật ngay tại lệnh `PROC_TEXT`

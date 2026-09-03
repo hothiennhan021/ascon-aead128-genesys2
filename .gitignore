@@ -1,5 +1,8 @@
 build/
-reports/
+# "reports/*" (khong phai "reports/") de git van duyet duoc vao trong
+# thu muc va ap dung ngoai le "!reports/ppa.csv" ben duoi -- git khong
+# the "un-ignore" mot file neu chinh thu muc cha cua no bi loai tru.
+reports/*
 !reports/ppa.csv
 vivado*.jou
 vivado*.log
@@ -9,3 +12,24 @@ tight_setup_hold_pins.txt
 *.dcp
 *.vvp
 *.vcd
+xsim.dir/
+xvlog.log
+xvlog.pb
+xelab.log
+xelab.pb
+xsim.log
+xsim.jou
+xsim_*.backup.jou
+xsim_*.backup.log
+*.wdb
+webtalk*.jou
+webtalk*.log
+xsim.ini
+xsim.ini.map
+xvhdl.log
+xvhdl.pb
+xar.pb
+compile_simlib.log
+compile_simlib.log.bak
+.cxl.*/
+.cxl.*.version
