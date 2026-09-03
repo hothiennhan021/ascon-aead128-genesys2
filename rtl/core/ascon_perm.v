@@ -8,13 +8,13 @@
 // Asynchronous active-low reset.
 //
 // ROUNDS_PER_CYCLE=1 (default) is the original architecture, kept
-// bit-for-bit unchanged. ROUNDS_PER_CYCLE=2 instantiates ascon_round
-// twice in series: the first takes the current round_idx, the second
-// takes round_idx+1, and the counter steps by 2 each cycle. p12 (12
-// rounds, start index 4) then runs 6 cycles (index 4,6,8,10,12,14)
-// and p8 (8 rounds, start index 8) runs 4 cycles (index 8,10,12,14) —
-// both counts are even, so no odd-round remainder handling is needed
-// (see docs/uarch.md section 6).
+// bit-for-bit unchanged. ROUNDS_PER_CYCLE=N (2, 4, ...) chains N
+// ascon_round instances purely combinationally (no intermediate
+// register): instance i takes round_idx+i, the counter steps by N
+// each cycle. Requires 12 (p12) and 8 (p8) to both be exact multiples
+// of N -- true for N=1,2,4 (p12: 12/N cycles starting at index 4;
+// p8: 8/N cycles starting at index 8) -- so no odd-round remainder
+// handling is needed (see docs/uarch.md section 6/3.1).
 //
 // Selected at compile time via the `ROUNDS_PER_CYCLE preprocessor
 // macro (default 1 if undefined), not by a runtime parameter
@@ -56,62 +56,51 @@ module ascon_perm #(
     wire [3:0] eff_idx = start ? round_start : round_idx;
 
     // last round_idx value that still needs a cycle: 15 for
-    // ROUNDS_PER_CYCLE=1, 14 for ROUNDS_PER_CYCLE=2 (round pair
-    // (14,15) is the final one) -- 4'd15 - (STEP-1).
+    // ROUNDS_PER_CYCLE=1, 12 for ROUNDS_PER_CYCLE=4, etc. --
+    // 4'd15 - (STEP-1).
     localparam [3:0] STEP          = ROUNDS_PER_CYCLE[3:0];
     localparam [3:0] LAST_ROUND_IDX = 4'd15 - (STEP - 4'd1);
 
-    wire [63:0] y0, y1, y2, y3, y4;
+    // Chain of ROUNDS_PER_CYCLE ascon_round instances: chain_x*[0] is
+    // the current state, chain_x*[k] is the state after k rounds of
+    // this cycle. chain_x*[ROUNDS_PER_CYCLE] is the cycle's result.
+    // Array indices are all genvar/generate-time constants (no
+    // runtime addressing), so this elaborates to a plain fixed chain
+    // of wires, one per generate iteration -- not a memory.
+    wire [63:0] chain_x0 [0:ROUNDS_PER_CYCLE];
+    wire [63:0] chain_x1 [0:ROUNDS_PER_CYCLE];
+    wire [63:0] chain_x2 [0:ROUNDS_PER_CYCLE];
+    wire [63:0] chain_x3 [0:ROUNDS_PER_CYCLE];
+    wire [63:0] chain_x4 [0:ROUNDS_PER_CYCLE];
 
+    assign chain_x0[0] = cur_x0;
+    assign chain_x1[0] = cur_x1;
+    assign chain_x2[0] = cur_x2;
+    assign chain_x3[0] = cur_x3;
+    assign chain_x4[0] = cur_x4;
+
+    genvar gi;
     generate
-        if (ROUNDS_PER_CYCLE == 1) begin : g_single_round
+        for (gi = 0; gi < ROUNDS_PER_CYCLE; gi = gi + 1) begin : g_rounds
             ascon_round u_round (
-                .x0_i      (cur_x0),
-                .x1_i      (cur_x1),
-                .x2_i      (cur_x2),
-                .x3_i      (cur_x3),
-                .x4_i      (cur_x4),
-                .round_idx (eff_idx),
-                .x0_o      (y0),
-                .x1_o      (y1),
-                .x2_o      (y2),
-                .x3_o      (y3),
-                .x4_o      (y4)
-            );
-        end else begin : g_double_round
-            wire [63:0] m0, m1, m2, m3, m4;
-
-            ascon_round u_round0 (
-                .x0_i      (cur_x0),
-                .x1_i      (cur_x1),
-                .x2_i      (cur_x2),
-                .x3_i      (cur_x3),
-                .x4_i      (cur_x4),
-                .round_idx (eff_idx),
-                .x0_o      (m0),
-                .x1_o      (m1),
-                .x2_o      (m2),
-                .x3_o      (m3),
-                .x4_o      (m4)
-            );
-
-            ascon_round u_round1 (
-                .x0_i      (m0),
-                .x1_i      (m1),
-                .x2_i      (m2),
-                .x3_i      (m3),
-                .x4_i      (m4),
-                .round_idx (eff_idx + 4'd1),
-                .x0_o      (y0),
-                .x1_o      (y1),
-                .x2_o      (y2),
-                .x3_o      (y3),
-                .x4_o      (y4)
+                .x0_i      (chain_x0[gi]),
+                .x1_i      (chain_x1[gi]),
+                .x2_i      (chain_x2[gi]),
+                .x3_i      (chain_x3[gi]),
+                .x4_i      (chain_x4[gi]),
+                .round_idx (eff_idx + gi[3:0]),
+                .x0_o      (chain_x0[gi+1]),
+                .x1_o      (chain_x1[gi+1]),
+                .x2_o      (chain_x2[gi+1]),
+                .x3_o      (chain_x3[gi+1]),
+                .x4_o      (chain_x4[gi+1])
             );
         end
     endgenerate
 
-    wire [319:0] round_result = {y0, y1, y2, y3, y4};
+    wire [319:0] round_result = {chain_x0[ROUNDS_PER_CYCLE], chain_x1[ROUNDS_PER_CYCLE],
+                                  chain_x2[ROUNDS_PER_CYCLE], chain_x3[ROUNDS_PER_CYCLE],
+                                  chain_x4[ROUNDS_PER_CYCLE]};
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

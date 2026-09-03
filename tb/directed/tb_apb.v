@@ -9,6 +9,20 @@
 //   - reading KEY0..3 always returns 0 (docs/spec.md 7)
 //   - writing CMD while STATUS.busy=1 is silently ignored (no
 //     pslverr, no disruption to the operation already in flight)
+//   - PROC_TEXT issued with DIN under-written (only 2/4 words):
+//     rejected, pslverr=1, core never leaves IDLE
+//   - DIN over-written (6 consecutive word writes to the 4 DIN
+//     addresses before the command): last write per word offset
+//     wins, no pslverr, and processing still produces the correct
+//     ciphertext (docs/spec.md 9.3 din_count semantics)
+//   - reads/writes to unmapped (0x70, 0xFC) and non-word-aligned
+//     (0x11) offsets: silently ignored on write, read back as 0,
+//     no pslverr, no observable side effect on STATUS
+//   - presetn toggled mid-operation (while STATUS.busy=1): core
+//     must land back in a clean IDLE (STATUS==0), and the very next
+//     encryption must still produce a correct result
+//   - two full encryptions run back-to-back with no reset between
+//     them: second must not inherit any state from the first
 
 `timescale 1ns/1ps
 
@@ -196,9 +210,20 @@ module tb_apb;
     // that moment, and the ongoing operation is unaffected.
     integer busy_test_ok, busy_test_ran;
 
+    // "ghi thua DIN": before the real 4-word write for the disrupted
+    // vector's first PT block, fire 2 bogus writes to DIN0/DIN1 (6
+    // consecutive DIN-address writes total). Last write per word
+    // offset must win with no pslverr along the way; the existing
+    // ciphertext check below then proves the extra writes didn't
+    // corrupt anything.
+    integer dinover_test_ran;
+    reg     dinover_bad_pslverr;
+    integer dinover_test_ok;
+
     task run_vector;
         input integer v;
         input do_busy_disrupt;
+        input do_din_overwrite_disrupt;
         begin
             base    = v * VEC_WORDS;
             count   = mem[base+0];
@@ -236,6 +261,13 @@ module tb_apb;
 
             for (j = 0; j < n_pt; j = j + 1) begin
                 vb = mem[base+21+j*4+3][4:0];
+                if (do_din_overwrite_disrupt && j == 0) begin
+                    dinover_test_ran = 1;
+                    apb_write(ADDR_DIN0+8'h00, 32'hDEADBEEF);
+                    if (last_pslverr_capture !== 1'b0) dinover_bad_pslverr = 1'b1;
+                    apb_write(ADDR_DIN0+8'h04, 32'h5A5A5A5A);
+                    if (last_pslverr_capture !== 1'b0) dinover_bad_pslverr = 1'b1;
+                end
                 write_din({ mem[base+21+j*4+1], mem[base+21+j*4+0] });
                 apb_write(ADDR_CMD, build_cmd(OP_PROC_TEXT,
                                                mem[base+21+j*4+2][0],
@@ -263,6 +295,9 @@ module tb_apb;
             end else begin
                 vector_failed = 1'b1;
             end
+
+            if (do_din_overwrite_disrupt)
+                dinover_test_ok = !dinover_bad_pslverr && !vector_failed;
 
             if (vector_failed) begin
                 errors = errors + 1;
@@ -294,6 +329,109 @@ module tb_apb;
         end
     endtask
 
+    // "ghi thieu DIN": write only 2/4 words then issue PROC_TEXT --
+    // must be rejected (pslverr=1), core must never leave IDLE, and
+    // the sticky done bit left over from the prior INIT must be
+    // untouched (proves the write was never accepted).
+    integer dinunder_test_ran, dinunder_test_ok;
+
+    task test_din_underflow;
+        reg [31:0] status_before, status_after;
+        begin
+            dinunder_test_ran = 1;
+            key_v   = 128'h00112233445566778899AABBCCDDEEFF;
+            nonce_v = 128'hFFEEDDCCBBAA99887766554433221100;
+            write_key_nonce;
+            apb_write(ADDR_CMD, build_cmd(OP_INIT, 1'b0, 1'b0, 5'd0));
+            wait_done;
+            apb_read(ADDR_STATUS, status_before);
+
+            apb_write(ADDR_DIN0+8'h00, 32'h11111111);
+            apb_write(ADDR_DIN0+8'h04, 32'h22222222);
+            apb_read(ADDR_STATUS, rd);
+
+            if (rd[5] !== 1'b0) begin
+                dinunder_test_ok = 0; // din_full should not be set with only 2/4 words
+            end else begin
+                apb_write(ADDR_CMD, build_cmd(OP_PROC_TEXT, 1'b1, 1'b0, 5'd16));
+                apb_read(ADDR_STATUS, status_after);
+                dinunder_test_ok = (last_pslverr_capture === 1'b1) &&
+                                   (status_after[0] === 1'b0) &&
+                                   (status_after[1] === status_before[1]);
+            end
+        end
+    endtask
+
+    // Unmapped (0x70, 0xFC) and non-word-aligned (0x11) offsets: write
+    // must be silently ignored (no pslverr), read back must be 0, and
+    // STATUS must be unaffected by the write.
+    integer unmapped_errors;
+
+    task check_addr_ignored;
+        input [7:0]  addr;
+        input [31:0] wval;
+        reg [31:0] status_before, status_after, rdval;
+        begin
+            apb_read(ADDR_STATUS, status_before);
+            apb_write(addr, wval);
+            if (last_pslverr_capture !== 1'b0) unmapped_errors = unmapped_errors + 1;
+            apb_read(addr, rdval);
+            if (rdval !== 32'h0) unmapped_errors = unmapped_errors + 1;
+            apb_read(ADDR_STATUS, status_after);
+            if (status_after !== status_before) unmapped_errors = unmapped_errors + 1;
+        end
+    endtask
+
+    // Reset asserted while the core is mid-permutation (busy after an
+    // accepted INIT): must land back in a clean IDLE (STATUS==0), and
+    // the very next encryption (vector 0, run through the normal
+    // run_vector path) must still be correct. The run_vector call
+    // here is scratch verification only -- counters are saved and
+    // restored so vector 0 is still counted exactly once by the main
+    // loop below.
+    integer reset_mid_op_ok;
+
+    task test_reset_mid_op;
+        integer errs_save, pass_save;
+        reg [31:0] status_mid, status_after_reset;
+        begin
+            reset_mid_op_ok = 1;
+            key_v   = { mem[0*VEC_WORDS+2], mem[0*VEC_WORDS+1] };
+            nonce_v = { mem[0*VEC_WORDS+4], mem[0*VEC_WORDS+3] };
+            write_key_nonce;
+            apb_write(ADDR_CMD, build_cmd(OP_INIT, 1'b0, 1'b0, 5'd0));
+
+            apb_read(ADDR_STATUS, status_mid);
+            if (status_mid[0] !== 1'b1)
+                reset_mid_op_ok = 0; // core should be busy mid-p12
+
+            repeat (3) @(negedge pclk);
+            presetn = 1'b0;
+            repeat (2) @(negedge pclk);
+            presetn = 1'b1;
+            @(negedge pclk);
+
+            apb_read(ADDR_STATUS, status_after_reset);
+            if (status_after_reset !== 32'h0)
+                reset_mid_op_ok = 0; // busy/done/dout_valid/tag_valid/tag_fail/din_full all clear
+
+            errs_save = errors;
+            pass_save = vec_pass;
+            run_vector(0, 1'b0, 1'b0);
+            if (errors !== errs_save)
+                reset_mid_op_ok = 0;
+            errors   = errs_save;
+            vec_pass = pass_save;
+        end
+    endtask
+
+    // Two full encryptions back-to-back with no reset in between:
+    // vec 500/501 (both non-trivial AD+PT) are captured out of the
+    // main loop below, which already runs every vector with presetn
+    // held high throughout -- this just gives the requirement its own
+    // named pass/fail line.
+    integer no_reset_a_failed, no_reset_b_failed;
+
     initial begin
         $readmemh("tb/directed/kat_128_128.hex", mem);
 
@@ -305,12 +443,21 @@ module tb_apb;
         paddr   = 8'h0;
         pwdata  = 32'h0;
 
-        errors           = 0;
-        vec_pass         = 0;
-        first_fail_count = -1;
-        key_read_errors  = 0;
-        busy_test_ran    = 0;
-        busy_test_ok     = 0;
+        errors             = 0;
+        vec_pass           = 0;
+        first_fail_count   = -1;
+        key_read_errors    = 0;
+        busy_test_ran      = 0;
+        busy_test_ok       = 0;
+        dinover_test_ran   = 0;
+        dinover_bad_pslverr = 1'b0;
+        dinover_test_ok    = 0;
+        dinunder_test_ran  = 0;
+        dinunder_test_ok   = 0;
+        unmapped_errors    = 0;
+        reset_mid_op_ok    = 0;
+        no_reset_a_failed  = 1'b1;
+        no_reset_b_failed  = 1'b1;
 
         @(negedge pclk);
         @(negedge pclk);
@@ -322,17 +469,54 @@ module tb_apb;
         else
             $display("FAIL key_read_zero %0d bad word(s)", key_read_errors);
 
-        for (vec = 0; vec < N_VEC; vec = vec + 1)
-            run_vector(vec, (vec == 0));
+        test_din_underflow;
+        if (dinunder_test_ran && dinunder_test_ok)
+            $display("PASSED din_underflow_rejected 1/1");
+        else
+            $display("FAIL din_underflow_rejected (ran=%0d ok=%0d)", dinunder_test_ran, dinunder_test_ok);
+
+        check_addr_ignored(8'h70, 32'hA5A5A5A5);
+        check_addr_ignored(8'hFC, 32'h5A5A5A5A);
+        check_addr_ignored(8'h11, 32'hDEADBEEF);
+        if (unmapped_errors == 0)
+            $display("PASSED unmapped_misaligned_addr 3/3");
+        else
+            $display("FAIL unmapped_misaligned_addr %0d bad check(s)", unmapped_errors);
+
+        test_reset_mid_op;
+        if (reset_mid_op_ok)
+            $display("PASSED reset_mid_operation 1/1");
+        else
+            $display("FAIL reset_mid_operation");
+
+        for (vec = 0; vec < N_VEC; vec = vec + 1) begin
+            run_vector(vec, (vec == 0), (vec == 165));
+            if (vec == 500) no_reset_a_failed = vector_failed;
+            if (vec == 501) no_reset_b_failed = vector_failed;
+        end
 
         if (busy_test_ran && busy_test_ok)
             $display("PASSED busy_write_ignored 1/1");
         else
             $display("FAIL busy_write_ignored (ran=%0d ok=%0d)", busy_test_ran, busy_test_ok);
 
+        if (dinover_test_ran && dinover_test_ok)
+            $display("PASSED din_overwrite_deterministic 1/1");
+        else
+            $display("FAIL din_overwrite_deterministic (ran=%0d ok=%0d)", dinover_test_ran, dinover_test_ok);
+
+        if (!no_reset_a_failed && !no_reset_b_failed)
+            $display("PASSED back_to_back_no_reset 2/2");
+        else
+            $display("FAIL back_to_back_no_reset (vec500_failed=%0d vec501_failed=%0d)",
+                      no_reset_a_failed, no_reset_b_failed);
+
         $display("PASSED apb %0d/%0d", vec_pass, N_VEC);
 
-        if (errors == 0 && key_read_errors == 0 && busy_test_ran && busy_test_ok)
+        if (errors == 0 && key_read_errors == 0 && busy_test_ran && busy_test_ok &&
+            dinunder_test_ran && dinunder_test_ok && unmapped_errors == 0 &&
+            reset_mid_op_ok && dinover_test_ran && dinover_test_ok &&
+            !no_reset_a_failed && !no_reset_b_failed)
             $display("PASSED ALL");
         else
             $display("FAILED (see FAIL lines above)");

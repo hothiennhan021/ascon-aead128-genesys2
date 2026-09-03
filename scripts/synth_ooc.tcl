@@ -8,6 +8,8 @@
 # dinh 1 -- xem docs/uarch.md muc 6. make synth/impl RPC=2 goi dung
 # cach nay.)
 
+set_param general.maxThreads 8
+
 set part_name   xc7a35tcpg236-1
 set top_module  ascon_apb
 set report_dir  reports

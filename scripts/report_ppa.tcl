@@ -12,6 +12,8 @@
 # make report RPC=2 goi dung cach nay. Hau to rpc<N> tren moi report
 # de hai kien truc khong ghi de len nhau.)
 
+set_param general.maxThreads 8
+
 set rounds_per_cycle 1
 if {$argc > 0} {
     set rounds_per_cycle [lindex $argv 0]
