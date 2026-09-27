@@ -121,13 +121,13 @@ xong), để tránh nhân đôi logic điều khiển hoán vị.
 
 | Trạng thái | Việc làm | Điều kiện chuyển tiếp | Tín hiệu điều khiển phát ra |
 |---|---|---|---|
-| `S_IDLE` | Chờ `start` từ `ascon_apb`. Khi có, chốt `opcode/last/mode/valid_bytes`. `opcode=SOFT_RESET` xử lý ngay tại đây (xóa cờ nội bộ, không chuyển trạng thái). | `opcode=INIT` → `S_LOAD`. `opcode=PROC_AD` hoặc `PROC_TEXT` → `S_XOR_IN`. `opcode=FINAL` → `S_FIN_KEYXOR`. `opcode=NOP/SOFT_RESET` hoặc không có `start` → giữ `S_IDLE`. | `busy=0`. `done` = xung 1 chu kỳ từ chu kỳ hoàn tất thao tác trước (xem các trạng thái cuối). |
+| `S_IDLE` | Chờ `start` từ `ascon_apb`. Khi có, chốt `opcode/last/valid_bytes`. `mode` **chỉ chốt ở `INIT`** (là thuộc tính của cả phiên, các lệnh sau bỏ qua bit `mode`). `INIT` còn xóa `tag_fail`, `tag`, khối giữ lại `last_pt`. `opcode=SOFT_RESET` xử lý ngay tại đây: nạp 0 vào thanh ghi trạng thái hoán vị, xóa `dout`/`tag`/`last_pt`/`tag_fail`/`mode`, không chuyển trạng thái. | `opcode=INIT` → `S_LOAD`. `opcode=PROC_AD` hoặc `PROC_TEXT` → `S_XOR_IN`. `opcode=FINAL` → `S_FIN_KEYXOR`. `opcode=NOP/SOFT_RESET` hoặc không có `start` → giữ `S_IDLE`. | `busy=0`. `done` = xung 1 chu kỳ từ chu kỳ hoàn tất thao tác trước (xem các trạng thái cuối). |
 | `S_LOAD` | Nạp `state_in = IV \|\| K0 \|\| K1 \|\| N0 \|\| N1`. Đặt `round_idx=4`, `ret_state=S_INIT_KEYXOR`. Xóa cờ `first_pt_done`. | Luôn sang `S_PERM` sau 1 chu kỳ. | `busy=1`. Nạp thanh ghi trạng thái toàn bộ (mux state = IV/K/N). |
-| `S_XOR_IN` | XOR `din` (đã áp `valid_bytes` nếu `last=1`) vào `S0/S1`. Nếu là `PROC_TEXT` đầu tiên: đồng thời XOR bit phân tách miền vào `S4`, đặt `first_pt_done=1`. Mã hóa: `dout = S0'/S1'` (rate sau XOR). Giải mã: `dout = S0/S1 XOR din` (rate trước khi bị ghi đè); nếu khối cuối, rate mới chỉ cập nhật phần `valid_bytes` + byte đệm. | `opcode=PROC_AD` **hoặc** (`PROC_TEXT` và `last=0`): `round_idx=8`, `ret_state=S_IDLE` (báo `done` ngay khi `p8` xong) → `S_PERM`. `opcode=PROC_TEXT` và `last=1`: bỏ qua `p8`, `done` phát ngay trong chu kỳ này → `S_IDLE`. | `busy=1`. `dout_valid=1` nếu là `PROC_TEXT`. `done=1` nếu là `PROC_TEXT` với `last=1` (không chạy thêm `p8`). |
+| `S_XOR_IN` | XOR `din` (đã áp `valid_bytes` nếu `last=1`) vào `S0/S1`. Nếu là `PROC_TEXT` đầu tiên: đồng thời XOR bit phân tách miền vào `S4`, đặt `first_pt_done=1`. Mã hóa: `dout = S0'/S1'` (rate sau XOR). Giải mã: `dout = S0/S1 XOR din` (rate trước khi bị ghi đè); nếu khối cuối, rate mới chỉ cập nhật phần `valid_bytes` + byte đệm. Với khối cuối, `dout` được **che về 0 từ byte `valid_bytes` trở đi** (các byte đó là rate/keystream thô). Giải mã khối cuối: `dout` không xuất mà giữ trong `last_pt`. | `opcode=PROC_AD` **hoặc** (`PROC_TEXT` và `last=0`): `round_idx=8`, `ret_state=S_IDLE` (báo `done` ngay khi `p8` xong) → `S_PERM`. `opcode=PROC_TEXT` và `last=1`: bỏ qua `p8`, `done` phát ngay trong chu kỳ này → `S_IDLE`. | `busy=1`. `dout_valid=1` nếu là `PROC_TEXT`. `done=1` nếu là `PROC_TEXT` với `last=1` (không chạy thêm `p8`). |
 | `S_PERM` | Mỗi chu kỳ: `state <= ascon_round(state, round_idx)`, `round_idx <= round_idx + 1`. | `round_idx < 15`: giữ `S_PERM`. `round_idx == 15` (vừa xử lý vòng cuối): sang `ret_state` (`S_INIT_KEYXOR`, `S_FIN_TAGXOR`, hoặc `S_IDLE`). | `busy=1`. `done=1` nếu `ret_state=S_IDLE` (trường hợp `p8` kết thúc một khối `PROC_AD`/`PROC_TEXT` không phải khối cuối). |
 | `S_INIT_KEYXOR` | `S3 ^= K0`, `S4 ^= K1`. | Luôn sang `S_IDLE` sau 1 chu kỳ. | `busy=1` trong chu kỳ này, `done=1`. |
 | `S_FIN_KEYXOR` | `S2 ^= K0`, `S3 ^= K1`. Đặt `round_idx=4`, `ret_state=S_FIN_TAGXOR`. | Luôn sang `S_PERM` sau 1 chu kỳ. | `busy=1`. |
-| `S_FIN_TAGXOR` | Tính `tag = {S3 ^ K0, S4 ^ K1}`. Nếu `mode=1` (giải mã): so `tag` với `tag_in` đã chốt (từ `TAGIN0..3`), đặt `tag_fail`. | Luôn sang `S_IDLE` sau 1 chu kỳ. | `busy=1`, `tag_valid=1`, `done=1`, `tag_fail` hợp lệ nếu `mode=1`. |
+| `S_FIN_TAGXOR` | Tính `tag = {S3 ^ K0, S4 ^ K1}`. Mã hóa: xuất `tag`. Giải mã (`mode=1`): so `tag` với `tag_in` (từ `TAGIN0..3`), đặt `tag_fail`; **không xuất `tag`** (giữ 0); tag đúng thì nhả `last_pt` ra `dout`; xóa `last_pt` trong mọi trường hợp. | Luôn sang `S_IDLE` sau 1 chu kỳ. | `busy=1`, `done=1`. Mã hóa: `tag_valid=1`. Giải mã: `tag_valid=0`, `tag_fail` hợp lệ, `dout_valid=1` chỉ khi tag đúng. |
 
 Ghi chú:
 - `busy` là tổ hợp của "khác `S_IDLE`" (trừ chu kỳ `S_IDLE` không có
@@ -318,8 +318,8 @@ FSM điều khiển toàn bộ luồng AEAD theo bảng mục 2, sở hữu mộ
 | `done` | ra | 1 | Xung 1 chu kỳ khi thao tác hiện tại hoàn tất |
 | `dout` | ra | 128 | Khối dữ liệu ra (đã áp `valid_bytes` nếu khối cuối) |
 | `dout_valid` | ra | 1 | 1 khi `dout` hợp lệ (sau lệnh `PROC_TEXT`) |
-| `tag` | ra | 128 | Tag tính được (sau `FINAL`) |
-| `tag_valid` | ra | 1 | 1 khi `tag` hợp lệ |
+| `tag` | ra | 128 | Tag tính được (sau `FINAL` khi mã hóa; luôn 0 khi giải mã) |
+| `tag_valid` | ra | 1 | 1 khi `tag` hợp lệ (chỉ khi mã hóa) |
 | `tag_fail` | ra | 1 | 1 khi tag không khớp `tag_in` (chỉ có nghĩa khi `mode=1`, sau `FINAL`) |
 
 ### 4.6. `rtl/ip/ascon_apb.v`
@@ -339,7 +339,22 @@ hữu một thực thể `ascon_aead_fsm`.
 | `pwdata` | vào | 32 | Dữ liệu ghi |
 | `prdata` | ra | 32 | Dữ liệu đọc |
 | `pready` | ra | 1 | Slave sẵn sàng kết thúc giao dịch |
-| `pslverr` | ra | 1 | Báo lỗi truy cập (vd. lệnh xử lý khi `din_full=0`) |
+| `pslverr` | ra | 1 | Báo lệnh bị từ chối, xem `docs/spec.md` 9.6 |
+
+Logic nội bộ đáng chú ý (chi tiết ở `docs/spec.md` 9.3, 9.6):
+
+- `din_written[3:0]`: mỗi bit đánh dấu một từ `DIN` đã được ghi kể từ
+  lệnh trước; `din_full = &din_written`. Ghi đè cùng một từ không được
+  tính hai lần.
+- `seq_r`: bộ theo dõi thứ tự phiên `NONE → READY → AD → AD_DONE → PT →
+  PT_DONE → NONE`; lệnh sai thứ tự bị từ chối.
+- `session_mode_r`: `mode` chốt ở `INIT`; lệnh `PROC_*`/`FINAL` có bit
+  `mode` khác bị từ chối.
+- Ghi `KEY`/`NONCE`/`TAGIN` khi `busy=1` bị bỏ qua; ghi `DIN` khi `busy`
+  vẫn được nhận (nạp trước khối kế tiếp an toàn vì FSM chỉ đọc `din`
+  ở chu kỳ `S_XOR_IN` ngay sau `start`).
+- `STATUS.cmd_err` (bit 6): cờ dính, bật khi có lệnh bị từ chối, xóa khi
+  có lệnh được nhận.
 
 ---
 
@@ -349,8 +364,7 @@ hữu một thực thể `ascon_aead_fsm`.
   (mux 16 làn byte) — để lại cho lúc viết RTL `ascon_aead_fsm`, bám
   theo hành vi đã kiểm chứng trong `model/ascon_model.py` (`pad16`,
   nhánh khối cuối của `decrypt`).
-- Chưa thiết kế chi tiết logic `pslverr` và các trường hợp lỗi giao
-  thức APB khác ngoài `din_full=0`.
+- Logic `pslverr` đã được thiết kế: xem mục 4.6 và `docs/spec.md` 9.6.
 - Kiến trúc `ROUNDS_PER_CYCLE=2` (bước 9 quy trình làm việc): đã
   khảo sát — xem mục 3.1 (ngân sách chu kỳ) và mục 6 (dự đoán và so
   sánh với số đo thật, `reports/ppa.csv` dòng `2rpcc`).

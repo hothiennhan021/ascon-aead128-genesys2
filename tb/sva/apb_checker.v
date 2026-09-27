@@ -11,11 +11,13 @@
 // $finish) to print the final tally. violation_count can be read at
 // any time (e.g. folded into a top-level PASSED/FAILED verdict).
 //
-// Rules checked (docs/spec.md section 6.2/7):
+// Rules checked (docs/spec.md section 6.2/7). Rules 1-3 check the
+// bus MASTER (the testbench BFM); rules 4-8 check the DUT (the slave):
 //   1. SETUP (psel && !penable) must be followed by ACCESS
 //      (psel && penable) on the very next clock edge.
 //   2. While an ACCESS phase is extended by wait states (pready was
-//      low last cycle), paddr/pwdata/pwrite must not change.
+//      low last cycle), paddr/pwdata/pwrite must not change. (Vacuous
+//      for ascon_apb, whose pready is tied to 1.)
 //   3. penable must never be high while psel is low.
 //   4. STATUS.tag_fail=1 implies STATUS.dout_valid=0 (docs/spec.md
 //      9.5 -- no plaintext leak on tag failure), checked whenever a
@@ -23,6 +25,9 @@
 //   5. Reading any KEY register (0x10..0x1C) must return prdata==0
 //      (docs/spec.md 7 -- keys are write-only), checked whenever such
 //      a read transfer completes.
+//   6. pslverr is 0 outside the ACCESS phase and never X/Z in it.
+//   7. prdata is never X/Z when a read transfer completes.
+//   8. pready is never X/Z while psel is high.
 
 `timescale 1ns/1ps
 
@@ -40,6 +45,7 @@ module apb_checker #(
     input  wire [DATA_WIDTH-1:0] pwdata,
     input  wire [DATA_WIDTH-1:0] prdata,
     input  wire                  pready,
+    input  wire                  pslverr,
 
     output wire [31:0]           violation_count
 );
@@ -125,6 +131,31 @@ module apb_checker #(
                     $display("APB_CHECKER VIOLATION @%0t: rule5 KEY read returned nonzero prdata=%h (addr=%h)",
                               $time, prdata, paddr);
                 end
+            end
+
+            // ---- Rule 6: pslverr only in ACCESS, never unknown ---------
+            if (!(psel && penable) && (pslverr !== 1'b0)) begin
+                violations = violations + 1;
+                $display("APB_CHECKER VIOLATION @%0t: rule6 pslverr=%b outside ACCESS",
+                          $time, pslverr);
+            end
+            if (psel && penable && ((pslverr !== 1'b0) && (pslverr !== 1'b1))) begin
+                violations = violations + 1;
+                $display("APB_CHECKER VIOLATION @%0t: rule6 pslverr unknown in ACCESS",
+                          $time);
+            end
+
+            // ---- Rule 7: read data known when a read completes --------
+            if (psel && penable && pready && !pwrite && (^prdata === 1'bx)) begin
+                violations = violations + 1;
+                $display("APB_CHECKER VIOLATION @%0t: rule7 prdata=%h has X/Z (addr=%h)",
+                          $time, prdata, paddr);
+            end
+
+            // ---- Rule 8: pready known while selected -------------------
+            if (psel && (pready !== 1'b0) && (pready !== 1'b1)) begin
+                violations = violations + 1;
+                $display("APB_CHECKER VIOLATION @%0t: rule8 pready unknown", $time);
             end
 
             primed           <= 1'b1;

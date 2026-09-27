@@ -1,5 +1,111 @@
 # Nhật ký lỗi
 
+## 2026-09-27 — Rà soát lớp APB: 8 lỗi ở `ascon_apb` / `ascon_aead_fsm` mà testbench cũ không chạm tới
+
+**Cách phát hiện (chung cho cả nhóm):** Rà lại toàn bộ RTL và testbench.
+`tb/directed/tb_apb.v` chỉ chạy **mã hóa** qua bus: không có lệnh nào với
+`mode = 1`, không ghi `TAGIN`, không gửi `SOFT_RESET`, không gửi lệnh sai
+thứ tự. Vì vậy mọi hành vi của đường giải mã, cờ `tag_fail` và các lệnh
+dùng sai ở mức IP chưa từng được kiểm. Viết
+`tb/directed/tb_apb_session.v` để phủ các chỗ đó. Chạy testbench mới trên
+RTL **cũ**: 10/10 nhóm kiểm tra FAIL và `apb_checker` báo 349 vi phạm.
+Trên RTL đã sửa: tất cả PASS, 0 vi phạm.
+
+### 1. Đọc được tag đúng sau khi giải mã sai (nghiêm trọng)
+
+- **Triệu chứng:** giải mã với tag sai → `tag_fail = 1`, nhưng đọc
+  `TAG0..3` vẫn ra đúng tag hợp lệ của bản mã đó.
+- **Nguyên nhân gốc:** `S_FIN_TAGXOR` luôn bật `tag_valid` và ghi tag
+  tính được ra `tag`, kể cả khi giải mã; `ascon_apb` chốt nó vào `TAG0..3`.
+- **Hậu quả:** ai gửi được bản mã giả mạo tới lõi (không cần khóa) sẽ đọc
+  ra tag hợp lệ cho chính bản giả mạo đó, rồi gửi lại lần hai để qua kiểm tra.
+- **Cách sửa:** khi `mode = 1`, không bật `tag_valid`, `tag` giữ 0; chỉ
+  `tag_fail` rời khỏi lõi.
+
+### 2. Đổi `mode` giữa phiên vượt qua cả việc giữ khối cuối lẫn kiểm tra tag (nghiêm trọng)
+
+- **Triệu chứng:** trong một phiên giải mã, gửi khối cuối với `mode = 0`
+  → bản rõ khối cuối ra `DOUT` ngay lập tức; gửi `FINAL` với `mode = 0`
+  → `tag_fail` luôn bằng 0.
+- **Nguyên nhân gốc:** FSM chốt lại `mode` ở **mọi** lệnh. Phép XOR ra
+  `dout` của mã hóa và giải mã giống nhau (rate ⊕ din), nên một khối bản
+  mã đi theo đường "mã hóa" vẫn cho ra đúng bản rõ, và đường mã hóa thì
+  không giữ khối cuối. Cơ chế ở mục "Rò bản rõ khối cuối" bên dưới vì vậy
+  vô hiệu.
+- **Cách sửa:** `mode` chỉ được chốt ở `INIT` (FSM bỏ qua bit `mode` của
+  các lệnh sau); `ascon_apb` còn từ chối (`pslverr`) mọi lệnh có `mode`
+  khác `mode` của `INIT`. Kiểm bằng nhóm `mode_lock` trong `tb_aead.v`
+  (FSM cũ: 0/56, FSM mới: 56/56) và `cmd_checks` trong `tb_apb_session.v`.
+
+### 3. `STATUS.tag_fail` treo sang phiên sau
+
+- **Triệu chứng:** sau một lần giải mã sai, bắt đầu phiên mã hóa mới thì
+  `STATUS` báo `tag_fail = 1` cùng lúc `dout_valid = 1` — đúng điều
+  `tb/sva/apb_checker.v` (luật 4) coi là vi phạm.
+- **Nguyên nhân gốc:** `tag_fail_r` chỉ được ghi ở `S_FIN_TAGXOR`, không
+  bị xóa bởi `INIT` hay `SOFT_RESET`.
+- **Cách sửa:** `INIT` và `SOFT_RESET` xóa `tag_fail`, `tag` và khối giữ lại.
+
+### 4. `din_full` đếm số lần ghi chứ không đếm số từ; bộ đếm tràn
+
+- **Triệu chứng:** ghi `DIN0` bốn lần → `din_full = 1` (3 từ còn lại là
+  dữ liệu cũ). Ghi đủ khối hai lần (8 lần ghi) → bộ đếm 3 bit tràn về 0,
+  lệnh xử lý hợp lệ bị từ chối bằng `pslverr`.
+- **Cách sửa:** thay bộ đếm bằng mặt nạ `din_written[3:0]`, mỗi bit một
+  từ; `din_full = &din_written`.
+
+### 5. Không kiểm tra lệnh dùng sai
+
+- **Triệu chứng:** `last = 1` với `valid_bytes = 16` (hoặc 17–31) được
+  nhận âm thầm và cho ra tag sai chuẩn; opcode 5, 6 được nhận nhưng FSM
+  không bao giờ báo `done` (phần mềm poll `done` sẽ treo); `FINAL` khi
+  chưa `INIT`, `PROC_AD` sau `PROC_TEXT`, `PROC_TEXT` sau khối cuối… đều
+  được nhận.
+- **Cách sửa:** `ascon_apb` thêm bộ theo dõi thứ tự phiên và từ chối các
+  lệnh trên bằng `pslverr` + cờ dính mới `STATUS.cmd_err` (bit 6) —
+  `docs/spec.md` 9.6.
+
+### 6. `KEY`/`NONCE`/`TAGIN` ghi được khi lõi đang chạy
+
+- **Triệu chứng:** ghi `KEY` trong lúc `FINAL` đang chạy p12 → tag ra sai.
+- **Nguyên nhân gốc:** FSM đọc thẳng `key_r`/`tag_in_r` ở `S_FIN_KEYXOR`/
+  `S_FIN_TAGXOR`, nhiều chu kỳ sau khi lệnh được nhận.
+- **Cách sửa:** bỏ qua ghi `KEY`/`NONCE`/`TAGIN` khi `busy = 1`. Ghi `DIN`
+  vẫn được phép khi `busy` (FSM chỉ đọc `din` ở chu kỳ `S_XOR_IN` ngay sau
+  `start`, nên nạp trước khối kế tiếp là an toàn — nhóm `din_prewrite`).
+
+### 7. `DOUT` lộ keystream ở các byte thừa của khối cuối
+
+- **Triệu chứng:** mã hóa bản rõ 5 byte → `DOUT` chứa 5 byte bản mã **và**
+  11 byte rate thô (keystream cho các byte 5–15). Giải mã cũng vậy.
+- **Cách sửa:** che `dout` về 0 từ byte `valid_bytes` trở đi ở khối cuối
+  (`f_byte_mask`, viết bằng `case` hằng số như `f_enc_rate`).
+
+### 8. BFM trong `tb_apb.v`/`tb_gatesim.v` lấy mẫu `pslverr`/`prdata` trễ nửa chu kỳ
+
+- **Triệu chứng:** với một lệnh xử lý **được nhận**, BFM đọc ra
+  `pslverr = 1` (vì `din_count` đã bị xóa ở cạnh vừa rồi).
+- **Nguyên nhân gốc:** BFM đọc tín hiệu ở cạnh xuống **sau** cạnh lên kết
+  thúc ACCESS, khi slave đã phản ứng với chính giao dịch đó.
+- **Cách sửa:** lấy mẫu ở cạnh lên kết thúc ACCESS như master APB thật.
+  Thêm luật 6–8 vào `apb_checker` để kiểm phía slave (`pslverr` chỉ trong
+  ACCESS, `prdata`/`pready` không X).
+
+**Bài học:** Testbench mức IP phải chạm được mọi thanh ghi, mọi bit và
+mọi chế độ trong `docs/spec.md` *qua đúng giao diện bus*. Test ở mức FSM
+(`tb_aead.v`) đã có test âm cho giải mã, nhưng các lỗi 1, 3, 5, 6 chỉ lộ ra
+ở lớp APB; lỗi 2 thì cần test "dùng sai có chủ đích" chứ không chỉ "dữ
+liệu sai". Tiện thể `tb/directed/tb_long.v` bổ sung thông điệp dài tới
+255 byte (KAT dừng ở 32 byte).
+
+**Ảnh hưởng tới số liệu PPA:** RTL thay đổi (thêm mặt nạ `DOUT`, bộ theo
+dõi phiên, khóa ghi) nên các con số LUT/FF/Fmax/công suất trong README,
+`docs/uarch.md`, `reports/*.csv` là của bản **trước** 0.2 — cần chạy lại
+`make synth impl report gatesim` trong Vivado. Số chu kỳ không đổi (không
+thêm trạng thái FSM).
+
+---
+
 ## 2026-09-03 — Không chú thích được SDF cho gate-level timing sim (RPC=1, buoc 8)
 
 **Triệu chứng:** `xelab` (bộ mô phỏng `xsim`, Vivado 2022.2) báo lỗi
@@ -159,6 +265,21 @@ slack dương ở period=6 ns) trước khi đầu tư thêm công sức; nếu 
 lý tiếp, hướng khả thi nhất là tách vật lý phép so sánh tag ra một
 module/instance riêng (không cùng always-block hay file) để phá vỡ cơ
 hội chia sẻ tài nguyên của Vivado, hoặc hỏi hỗ trợ Xilinx.
+
+**Cập nhật 2026-09-27 — phân tích nguyên nhân:** chuỗi CARRY4 này chính
+là **bộ so sánh 128 bit** `tag != tag_in`, không phải "chia sẻ tài
+nguyên" giữa hai khối logic. Vivado hiện thực phép so sánh bằng rộng
+bằng LUT6 + chuỗi carry làm cổng AND rộng: mỗi LUT6 so được 3 cặp bit →
+128/3 ≈ 43 tầng → 43/4 ≈ **11 CARRY4**, khớp đúng con số đo được. Đường tới
+hạn bắt đầu ở `tag_in_r[22]` (tầng carry thứ 7, tức CARRY4 thứ 2) và đi
+qua **10** CARRY4 còn lại — cũng khớp báo cáo. Nó kết thúc ở
+`dout_r_reg[*]/CE` vì ở `S_FIN_TAGXOR` việc nhả khối cuối
+(`next_dout = last_pt_r` khi `!next_tag_fail`) phụ thuộc trực tiếp kết
+quả so sánh trong cùng chu kỳ, nên kết quả so sánh điều khiển chân CE
+của cả 128 bit `dout_r`. Bỏ phép so sánh thì chuỗi biến mất là đúng như
+vậy. Hướng xử lý: chốt `tag_fail` vào thanh ghi ở `S_FIN_TAGXOR`, thêm
+một trạng thái nhả `dout` ở chu kỳ sau (`FINAL` thành 15 chu kỳ). Chưa
+làm vì cần chạy lại Vivado để đo và cập nhật mọi bảng chu kỳ/PPA.
 
 **Bài học:** Với Vivado Synth_8, viết lại RTL bằng `case` thay vì toán
 tử so sánh **không đảm bảo** đổi được lựa chọn công nghệ ánh xạ, vì

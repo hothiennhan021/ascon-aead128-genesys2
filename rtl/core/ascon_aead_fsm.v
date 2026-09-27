@@ -105,16 +105,14 @@ module ascon_aead_fsm (
     // this file and no reusable "is byte i before the boundary" signal
     // for a technology mapper to recognize as a magnitude compare. This
     // did shrink the design (1824 -> 1566 LUTs on xc7a35tcpg236-1, see
-    // docs/BUGS.md) but did NOT remove the 11-CARRY4 chain on dout_r
-    // that motivated the rewrite -- that turned out to depend on the
-    // unrelated 128-bit tag comparison in S_FIN_TAGXOR (next_tag !=
-    // tag_in) being present elsewhere in the same module; removing only
-    // that comparison (independently of this rewrite) also removed the
-    // chain. Per-signal and per-module `(* use_carry = "no" *)`,
-    // `dont_touch`, and `synth_design -resource_sharing off` were all
-    // tried and did not break that interaction (see docs/BUGS.md for
-    // the full record). Root cause not resolved; documented rather than
-    // masked with attributes that were confirmed ineffective.
+    // docs/BUGS.md) but did NOT remove the 11-CARRY4 chain on dout_r.
+    // That chain is the 128-bit tag comparison itself (calc_tag !=
+    // tag_in in S_FIN_TAGXOR): 3 bit-pairs per LUT6 -> 43 carry stages
+    // -> 11 CARRY4. It lands on dout_r/CE because releasing the held
+    // last block is gated by the comparison result in the same cycle.
+    // Registering tag_fail and releasing one cycle later would take it
+    // off the dout_r path (see docs/BUGS.md) -- not done here, since it
+    // changes the FINAL cycle count and needs a fresh Vivado run.
 
     function [127:0] f_enc_rate;
         input [127:0] rate_old;
@@ -196,7 +194,42 @@ module ascon_aead_fsm (
                               ? f_dec_rate(rate_old, din, last_r, vbytes_r)
                               : f_enc_rate(rate_old, din, last_r, vbytes_r);
 
-    wire [127:0] dout_calc = is_decrypt_text ? (rate_old ^ din) : rate_new;
+    // Byte-lane mask for the last (partial) block: byte k is kept only
+    // when k < valid_bytes. Flat `case` of literal constants, same style
+    // as f_enc_rate/f_dec_rate (no magnitude comparator).
+    function [127:0] f_byte_mask;
+        input [4:0] vbytes;
+        begin
+            case (vbytes)
+                5'd0:    f_byte_mask = 128'h00000000000000000000000000000000;
+                5'd1:    f_byte_mask = 128'h000000000000000000000000000000FF;
+                5'd2:    f_byte_mask = 128'h0000000000000000000000000000FFFF;
+                5'd3:    f_byte_mask = 128'h00000000000000000000000000FFFFFF;
+                5'd4:    f_byte_mask = 128'h000000000000000000000000FFFFFFFF;
+                5'd5:    f_byte_mask = 128'h0000000000000000000000FFFFFFFFFF;
+                5'd6:    f_byte_mask = 128'h00000000000000000000FFFFFFFFFFFF;
+                5'd7:    f_byte_mask = 128'h000000000000000000FFFFFFFFFFFFFF;
+                5'd8:    f_byte_mask = 128'h0000000000000000FFFFFFFFFFFFFFFF;
+                5'd9:    f_byte_mask = 128'h00000000000000FFFFFFFFFFFFFFFFFF;
+                5'd10:   f_byte_mask = 128'h000000000000FFFFFFFFFFFFFFFFFFFF;
+                5'd11:   f_byte_mask = 128'h0000000000FFFFFFFFFFFFFFFFFFFFFF;
+                5'd12:   f_byte_mask = 128'h00000000FFFFFFFFFFFFFFFFFFFFFFFF;
+                5'd13:   f_byte_mask = 128'h000000FFFFFFFFFFFFFFFFFFFFFFFFFF;
+                5'd14:   f_byte_mask = 128'h0000FFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+                5'd15:   f_byte_mask = 128'h00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+                default: f_byte_mask = 128'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+            endcase
+        end
+    endfunction
+
+    // dout for the last block is masked to valid_bytes: the bytes past
+    // the message end are raw rate (keystream) and must not reach DOUT.
+    wire [127:0] dout_raw  = is_decrypt_text ? (rate_old ^ din) : rate_new;
+    wire [127:0] dout_calc = last_r ? (dout_raw & f_byte_mask(vbytes_r)) : dout_raw;
+
+    // Tag computed by the finalization. Exposed on `tag` only when
+    // encrypting; on decrypt it is used solely for the comparison.
+    wire [127:0] calc_tag  = { s4_cur ^ key[127:64], s3_cur ^ key[63:0] };
 
     // ---- combinational next-state / next-output logic -----------------
     reg [2:0]   next_state, next_ret_state;
@@ -238,11 +271,19 @@ module ascon_aead_fsm (
                 if (start) begin
                     next_op     = opcode;
                     next_last   = last;
-                    next_mode   = mode;
                     next_vbytes = valid_bytes;
+                    // mode is a per-session property: latched only by
+                    // INIT and ignored on every later command, so a
+                    // decrypt session cannot be switched to encrypt mode
+                    // for its last block (which would release that block
+                    // immediately instead of holding it for the tag check)
                     case (opcode)
                         OP_INIT: begin
-                            next_state = S_LOAD;
+                            next_mode     = mode;
+                            next_tag_fail = 1'b0;   // clear result of previous session
+                            next_tag      = 128'h0;
+                            next_last_pt  = 128'h0;
+                            next_state    = S_LOAD;
                         end
                         OP_PROC_AD, OP_PROC_TEXT: begin
                             next_state = S_XOR_IN;
@@ -251,7 +292,17 @@ module ascon_aead_fsm (
                             next_state = S_FIN_KEYXOR;
                         end
                         OP_SOFT_RESET: begin
+                            // abandon the session and scrub everything
+                            // derived from the key: permutation state,
+                            // held plaintext, output and tag registers
+                            perm_state_i  = 320'h0;
+                            perm_load     = 1'b1;
                             next_first_pt = 1'b0;
+                            next_mode     = 1'b0;
+                            next_tag_fail = 1'b0;
+                            next_tag      = 128'h0;
+                            next_dout     = 128'h0;
+                            next_last_pt  = 128'h0;
                             next_done     = 1'b1;
                             next_state    = S_IDLE;
                         end
@@ -328,19 +379,28 @@ module ascon_aead_fsm (
             end
 
             S_FIN_TAGXOR: begin
-                next_tag       = { s4_cur ^ key[127:64], s3_cur ^ key[63:0] };
-                next_tag_valid = 1'b1;
-                next_tag_fail  = mode_r ? (next_tag != tag_in) : 1'b0;
-                next_done      = 1'b1;
-                next_state     = S_IDLE;
+                next_tag_fail = mode_r ? (calc_tag != tag_in) : 1'b0;
+                next_done     = 1'b1;
+                next_state    = S_IDLE;
 
-                if (mode_r && !next_tag_fail) begin
-                    // decrypt, tag OK: release the held last block now
-                    next_dout       = last_pt_r;
-                    next_dout_valid = 1'b1;
+                if (!mode_r) begin
+                    // encrypt: publish the tag
+                    next_tag       = calc_tag;
+                    next_tag_valid = 1'b1;
+                end else begin
+                    // decrypt: never publish the computed tag -- on a
+                    // forged message it would hand the caller a valid tag
+                    // for that forgery. Only pass/fail leaves the core.
+                    next_tag      = 128'h0;
+                    next_last_pt  = 128'h0; // scrub the held block either way
+                    if (!next_tag_fail) begin
+                        // tag OK: release the held last block now
+                        next_dout       = last_pt_r;
+                        next_dout_valid = 1'b1;
+                    end
+                    // tag_fail: last block stays blocked -- dout_valid is
+                    // never asserted for it, dout keeps its old value
                 end
-                // decrypt, tag_fail: last block stays blocked -- dout_valid
-                // is never asserted for it, dout keeps its old value
             end
 
             default: begin
