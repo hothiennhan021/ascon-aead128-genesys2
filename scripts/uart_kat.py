@@ -43,6 +43,7 @@ STATUS_DONE_BIT       = 1
 STATUS_DOUT_VALID_BIT = 2
 STATUS_TAG_VALID_BIT  = 3
 STATUS_TAG_FAIL_BIT   = 4
+STATUS_CMD_ERR_BIT    = 6   # command rejected (docs/spec.md 9.6)
 
 
 def build_cmd(op, last, mode, valid_bytes):
@@ -106,6 +107,9 @@ class UartAscon:
             status = self.read_status()
             if status & (1 << STATUS_DONE_BIT):
                 return status
+            if status & (1 << STATUS_CMD_ERR_BIT):
+                raise RuntimeError('command rejected by the core (STATUS.cmd_err=1, '
+                                   'see docs/spec.md 9.6), STATUS=0x%08x' % status)
             if time.time() > deadline:
                 raise TimeoutError('STATUS.done never set -- board hung or not responding')
 

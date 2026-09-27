@@ -6,19 +6,22 @@ Hardware IP core implementing Ascon-AEAD128 per NIST SP 800-232, with an AMBA AP
 ![Vivado 2022.2](https://img.shields.io/badge/toolchain-Vivado%202022.2-orange)
 ![NIST SP 800-232](https://img.shields.io/badge/spec-NIST%20SP%20800--232-green)
 ![Tests](https://img.shields.io/badge/KAT%20tests-1089%2F1089%20passing-brightgreen)
+[![regress](https://github.com/hothiennhan021/ascon-aead128-genesys2/actions/workflows/regress.yml/badge.svg)](https://github.com/hothiennhan021/ascon-aead128-genesys2/actions/workflows/regress.yml)
 
 ## Key results
 
 | | |
 |---|---|
-| Correctness | 1089/1089 NIST LWC KAT vectors pass, both encrypt and decrypt, plus negative tests (ciphertext/tag/AD corruption → `tag_fail` asserted, plaintext withheld) |
-| Protocol | APB checker in pure Verilog reports 0 violations across 1089 transaction sequences |
+| Correctness | 1089/1089 NIST LWC KAT vectors pass, both encrypt and decrypt, at the FSM level **and through the APB bus**, plus negative tests (ciphertext/tag/AD corruption → `tag_fail` asserted, last block withheld, no tag disclosed) and 60 random messages up to 255 bytes against the Python model |
+| Protocol | APB checker in pure Verilog (bus-master rules + slave-side rules) reports 0 violations across encrypt, decrypt and command-error runs |
 | PPA (Artix-7, `xc7a35tcpg236-1`, speed grade -1) | RPC=1: 1555 LUT, 182.25 MHz, 1.667 Mbps/LUT · RPC=2: 2313 LUT, 170.74 MHz, 1.890 Mbps/LUT · RPC=4: 3565 LUT, 89.77 MHz, 1.074 Mbps/LUT |
 | Fmax across device families (RPC=1) | Artix-7 (-1): 182.25 MHz · Kintex-7 (-2): 304.04 MHz · Virtex-7 (-2): 273.45 MHz |
 | Power (RPC=1, Artix-7, gate-level, SAIF-based) | 91 mW total on-chip (23 mW dynamic) |
 | Resource usage | 0 BRAM, 0 DSP in all configurations |
 
 `RPC` = `ROUNDS_PER_CYCLE`, the unroll factor of the permutation datapath (see [Design space exploration](#design-space-exploration)).
+
+> PPA, Fmax and power figures in this README, `docs/uarch.md` and `reports/*.csv` were measured on the RTL **before** the v0.2 security fixes of 2026-09-27 (`docs/BUGS.md`). The fixes add a little control logic (session tracker, DOUT byte mask, write locks) and no FSM states, so cycle counts are unchanged; LUT/FF/Fmax should be refreshed with `make synth impl report gatesim`.
 
 ## Architecture
 
@@ -50,20 +53,26 @@ Three points were measured on `xc7a35tcpg236-1` by unrolling the permutation dat
 
 | Layer | Tool | What it checks |
 |---|---|---|
-| Reference model | Python (`model/ascon_model.py`) | Golden model, itself validated against the official NIST KAT vectors |
+| Reference model | Python (`model/ascon_model.py`) | Golden model, itself validated against the official NIST KAT vectors (encrypt, decrypt, and rejection of a flipped tag) |
 | Unit tests | Icarus Verilog | `ascon_sbox`, `ascon_linear`, `ascon_round`, `ascon_perm` against the Python model, round by round |
-| Directed/KAT tests | Icarus Verilog | Full AEAD FSM against all 1089 `LWC_AEAD_KAT_128_128.txt` vectors, encrypt and decrypt |
-| Protocol checker | Pure Verilog SVA-style checker (`tb/sva/apb_checker.v`) | APB timing rules, 0 violations across 1089 sequences |
+| Directed/KAT tests | Icarus Verilog | Full AEAD FSM against all 1089 `LWC_AEAD_KAT_128_128.txt` vectors, encrypt and decrypt (`tb_aead.v`); `kat_128_128.hex` is regenerated from the NIST file by `tb/directed/gen_kat_hex.py` (`make hexcheck`) |
+| APB-level tests | Icarus Verilog | Encrypt KAT through the bus (`tb_apb.v`); decrypt KAT, negative tests, command checks, write locks, SOFT_RESET, DOUT masking through the bus (`tb_apb_session.v`) |
+| Long messages | Icarus Verilog | 60 random vectors, AD/PT up to 255 bytes (16 blocks), encrypt + decrypt vs. the model (`tb_long.v`) |
+| Protocol checker | Pure Verilog checker (`tb/sva/apb_checker.v`) | Rules 1–3 check the bus master (testbench BFM), rules 4–8 check the DUT (tag_fail ⇒ no dout_valid, KEY reads 0, pslverr only in ACCESS, no X on prdata/pready) |
 | Negative tests | Icarus Verilog | Bit-flip on ciphertext/tag/AD → `tag_fail` must assert and the final plaintext block must be withheld |
 | Gate-level | Vivado `xsim` on post-route netlist | Functional equivalence (zero-delay) + power (SAIF) on 20 selected KAT vectors |
 | Static timing | Vivado `report_timing_summary` on post-route checkpoint | Non-negative WNS at the chosen clock period |
 
-**Security finding — plaintext release before tag verification.** Ascon-AEAD128 is an online cipher: each ciphertext block is produced as soon as the corresponding plaintext block is available, but the authentication tag can only be computed after the entire message has been processed. A first implementation of `ascon_aead_fsm` asserted `dout_valid` unconditionally on every `PROC_TEXT` command during decryption, including the final block — meaning unauthenticated plaintext from the last block could reach the bus before the tag check ever ran. All 1089 KAT vectors still passed, because none of them exercise a corrupted tag. The bug surfaced only when a negative test was written deliberately (flip a ciphertext/tag/AD bit and check `tag_fail`). The fix holds the final block's plaintext in a register and only releases it, gated on `tag_fail == 0`, after the `FINAL` stage completes. Full writeup, including root cause and the general lesson (security requirements must be encoded as an explicit FSM state, not left to "remembering the spec"), is in `docs/BUGS.md`.
+Every testbench prints PASS/FAIL, and `scripts/run_sim.py` turns any `FAIL` line into a non-zero exit code, so `make regress` stops on the first failure. GitHub Actions (`.github/workflows/regress.yml`) runs the model, `hexcheck`, `regress` for RPC = 1, 2, 4 and `demo_sim` on every push. The requirement-to-test map is in `docs/test_plan.md`.
+
+**Security finding — plaintext release before tag verification.** Ascon-AEAD128 is an online cipher: each ciphertext block is produced as soon as the corresponding plaintext block is available, but the authentication tag can only be computed after the entire message has been processed. A first implementation of `ascon_aead_fsm` asserted `dout_valid` unconditionally on every `PROC_TEXT` command during decryption, including the final block. All 1089 KAT vectors still passed, because none of them exercise a corrupted tag; the bug surfaced only when a negative test was written deliberately. The fix holds the **final** block's plaintext in a register and only releases it, gated on `tag_fail == 0`, after `FINAL` completes. Earlier blocks of a multi-block message are still released before verification — that is inherent to a block-streaming core without a message buffer, so the driver must discard all plaintext when `tag_fail = 1` (`docs/spec.md` 9.5).
+
+A later review at the bus level (2026-09-27) found that this protection could be bypassed and that the core leaked more than it should: sending the last block and `FINAL` with `mode = 0` inside a decrypt session released the last block immediately and forced `tag_fail = 0`; the computed tag was readable from `TAG0..3` after a failed decryption (handing out a valid tag for a forged message); and `tag_fail` stayed set into the next session. These are fixed — `mode` is latched at `INIT`, the tag is never published on decrypt, commands are checked for order/mode/length — and covered by `tb/directed/tb_apb_session.v`. Full writeups for all of these, with root cause and lessons, are in `docs/BUGS.md`.
 
 ## Repository structure
 
 ```
-docs/          spec.md (register map), uarch.md (FSM/datapath/PPA), test_plan.md, BUGS.md, comparison.md, figures/
+docs/          spec.md (register map), uarch.md (FSM/datapath/PPA), test_plan.md (requirement → test map), BUGS.md, comparison.md, figures/
 model/         Python reference model (golden, validated against NIST KAT)
 rtl/core/      ascon_sbox, ascon_linear, ascon_round, ascon_perm, ascon_aead_fsm
 rtl/ip/        ascon_apb.v — the synthesizable top-level unit
@@ -83,14 +92,17 @@ Requires: Icarus Verilog (simulation), Python 3 (reference model), Vivado 2022.2
 
 ```
 make model      # run the Python reference model against the NIST KAT
-make regress    # run all unit + directed testbenches (Icarus Verilog)
+make hexcheck   # check tb/directed/kat_128_128.hex against the NIST KAT file
+make regress    # run all unit + directed testbenches (Icarus Verilog), stops on FAIL
+make regress_all  # regress for RPC = 1, 2 and 4
+make demo_sim   # Genesys 2 UART demo, simulated in Icarus
 make synth      # Out-of-Context synthesis in Vivado
 make impl       # implementation + Fmax sweep
 make gatesim    # gate-level functional sim + power (SAIF) + static timing evidence
 make bitstream  # full synthesis + implementation + bitstream for the Genesys 2 demo
 ```
 
-`RPC=2` and `PART=xc7k325tffg900-2` can be appended to `unit`/`kat`/`regress`/`synth`/`impl`/`report` to select the unroll factor or target device, e.g. `make impl RPC=2 PART=xc7vx485tffg1761-2`.
+The Makefile works from `cmd.exe` on Windows and from `sh` on Linux/macOS (it picks `python` or `python3` accordingly). `RPC=2` and `PART=xc7k325tffg900-2` can be appended to `unit`/`kat`/`regress`/`synth`/`impl`/`report` to select the unroll factor or target device, e.g. `make impl RPC=2 PART=xc7vx485tffg1761-2`.
 
 ## Comparison with published work
 
@@ -110,7 +122,9 @@ All figures for this project measured on `xc7a35tcpg236-1`, speed grade **-1** (
 - Not yet loaded onto physical hardware; the Genesys 2 UART demo (`rtl/demo/`) is verified only in Icarus Verilog simulation, not on-board.
 - Gate-level *timing* simulation with back-annotated SDF could not be run: the installed Vivado 2022.2 `unisims_ver` simulation library is missing complete specify blocks for `FDCE`, so `xsim` cannot annotate SDF delays. Timing closure is instead evidenced by static timing analysis (`report_timing_summary` on the routed checkpoint) plus a zero-delay gate-level functional simulation; see `docs/BUGS.md` for the full investigation.
 - Power is measured only for the RPC=1 configuration on Artix-7; RPC=2/4 and other device families have no power figures.
-- A CARRY4 chain shared between the 128-bit tag comparison and the byte-mask output logic could not be eliminated through RTL restructuring or synthesis attributes; it does not currently violate timing but is a known area for further investigation (`docs/BUGS.md`).
+- The RPC=1 critical path is the 128-bit tag comparison (implemented by Vivado as an 11-CARRY4 chain) feeding the `dout_r` clock enable, because the held last block is released in the same cycle the tag is compared. Registering `tag_fail` and releasing one cycle later would take it off that path (`docs/BUGS.md`); not done yet because it changes the `FINAL` cycle count and needs a fresh Vivado run.
+- Throughput through the APB interface is bus-bound: each 16-byte block needs at least 4 `DIN` writes, 1 `CMD` write, 1 `STATUS` read and 4 `DOUT` reads, i.e. about 20 bus cycles versus 9 core cycles (RPC=1) or 5 (RPC=2). Through APB the ceiling is roughly 128 × f / 20 — about 1.17 Gbps for RPC=1 at 182 MHz and 1.09 Gbps for RPC=2 at 171 MHz — so the asymptotic figures above are core-only numbers, and unrolling beyond RPC=1 does not help a system that feeds the core over this APB port. A streaming interface (AXI-Stream or DMA) would be needed to use the core's full rate.
+- On decryption only the last block is held until the tag is checked; earlier blocks are released before verification (see above).
 
 ## References
 

@@ -138,7 +138,7 @@ def run_kat(path):
         text = f.read()
     blocks = [b for b in text.strip().split('\n\n') if b.strip()]
     total = len(blocks)
-    passed = 0
+    passed = dec_passed = rej_passed = 0
     first_fail = None
     for block in blocks:
         fields = {}
@@ -156,10 +156,18 @@ def run_kat(path):
             passed += 1
         elif first_fail is None:
             first_fail = (count, len(ad), len(pt))
+        # decrypt the published CT+tag, and reject it with one tag bit flipped
+        c_kat, t_kat = ct_expected[:-16], ct_expected[-16:]
+        if decrypt(key, nonce, ad, c_kat, t_kat) == pt:
+            dec_passed += 1
+        if decrypt(key, nonce, ad, c_kat, bytes([t_kat[0] ^ 1]) + t_kat[1:]) is None:
+            rej_passed += 1
     if first_fail is not None:
         print('First fail: Count=%d AD_len=%d PT_len=%d' % first_fail)
     print('PASSED %d/%d' % (passed, total))
-    return passed == total
+    print('PASSED decrypt %d/%d' % (dec_passed, total))
+    print('PASSED reject_bad_tag %d/%d' % (rej_passed, total))
+    return passed == total and dec_passed == total and rej_passed == total
 
 
 if __name__ == '__main__':

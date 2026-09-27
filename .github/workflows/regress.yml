@@ -1,0 +1,36 @@
+name: regress
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sim:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        rpc: [1, 2, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Reference model vs NIST KAT, KAT hex check
+        run: make model hexcheck
+
+      - name: Regression (ROUNDS_PER_CYCLE=${{ matrix.rpc }})
+        run: make regress RPC=${{ matrix.rpc }}
+
+      - name: UART demo simulation
+        if: matrix.rpc == 1
+        run: make demo_sim
+
+      - name: Keep simulation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-logs-rpc${{ matrix.rpc }}
+          path: build/*.log
+          if-no-files-found: ignore

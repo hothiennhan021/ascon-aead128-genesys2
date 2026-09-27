@@ -75,9 +75,11 @@ Ghi chú:
 Ghi chú:
 - Malal không có dữ liệu Virtex-7 trong bài báo (chỉ Artix-7, Kintex-7, Spartan-7/6).
 - Trên Kintex-7 và Virtex-7, đồ án dùng speed grade −2 trong khi Alharbi và Malal dùng
-  −3 (nhanh hơn một cấp); dù vậy Fmax của đồ án vẫn thấp hơn vì kiến trúc hoán vị của
-  đồ án gồm datapath 320-bit tổ hợp toàn phần một round mỗi chu kỳ chưa được tối ưu
-  pipeline sâu như các công trình đối chiếu.
+  −3 (nhanh hơn một cấp); Fmax của đồ án thấp hơn một phần vì speed grade, và một
+  phần vì đường tới hạn RPC=1 ở cả ba dòng chip **không** nằm ở datapath hoán vị mà là
+  chuỗi CARRY4 của phép so sánh tag 128 bit nối vào chân CE của `dout_r` (`docs/uarch.md`
+  mục 8.4, `docs/BUGS.md`). Chốt `tag_fail` sang chu kỳ sau là hướng cải thiện Fmax đầu
+  tiên, trước khi nói tới pipeline datapath.
 - Đồ án chưa đo công suất trên Kintex-7/Virtex-7 (chỉ có báo cáo gate-level power cho
   cấu hình RPC=1 trên Artix-7, xem `reports/power_rpc1.rpt`).
 
@@ -116,8 +118,13 @@ Nhận xét:
 
 1. **Ascon-AEAD128 (đồ án) vs Ascon-128 v1.2 (Alharbi):** cùng kiến trúc iterative
    1 round/chu kỳ, đồ án đạt Mbps/LUT cao hơn 5.6–10× tùy FPGA, chủ yếu nhờ rate gấp
-   đôi (128 so với 64 bit) chứ không phải do vi kiến trúc vượt trội — cần nêu rõ điều này
-   khi trình bày trong báo cáo đồ án để tránh ngộ nhận "nhanh hơn thật".
+   đôi (128 so với 64 bit) và vì hai bên tính throughput khác nhau (asymptotic ở đồ án,
+   toàn bộ phép AEAD gồm khởi tạo/hoàn tất ở Alharbi — tính cùng cách thì con số của đồ
+   án là `throughput_16B_packet_Mbps` = 613.89 Mbps cho gói 16 byte), chứ không phải do
+   vi kiến trúc vượt trội — cần nêu rõ điều này khi trình bày trong báo cáo đồ án để tránh
+   ngộ nhận "nhanh hơn thật". Công suất cũng vậy: 91 mW là tổng on-chip, phần lớn là công
+   suất tĩnh phụ thuộc kích thước chip (xc7a35t so với xc7a100t của Alharbi) — so công
+   suất động (23 mW) hoặc năng lượng/bit sẽ công bằng hơn.
 2. **Ascon-AEAD128 (đồ án) vs ASCON-128a (Malal):** cùng rate 128 bit nên là so sánh
    công bằng nhất về throughput/khối, nhưng khác lớp kiến trúc (Malal xử lý 4 round
    song song/chu kỳ, đồ án xử lý 1 round/chu kỳ) nên Malal đạt Mbps/LUT cao hơn (2.44
