@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Phiên bản** | 0.1 (nháp) |
-| **Ngày** | *điền ngày* |
+| **Phiên bản** | 0.2 |
+| **Ngày** | 2026-09-27 |
 | **Tác giả** | Hồ Thiện Nhân — MSSV 23521073 |
 | **GVHD** | ThS. Tạ Trí Đức |
 | **Chuẩn tham chiếu** | NIST SP 800-232 · AMBA APB Protocol Specification |
@@ -60,9 +60,9 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 | Tham số | Giá trị mặc định | Ghi chú |
 |---|---|---|
-| `ROUNDS_PER_CYCLE` | 1 | Số vòng hoán vị mỗi chu kỳ; đổi thành 2 cho kiến trúc khảo sát |
-| `APB_ADDR_WIDTH` | 8 | Đủ cho dải thanh ghi 0x00–0x6C |
-| `APB_DATA_WIDTH` | 32 | Cố định theo chuẩn APB |
+| `ROUNDS_PER_CYCLE` | 1 | Số vòng hoán vị mỗi chu kỳ (1, 2 hoặc 4). Chọn lúc biên dịch bằng macro `` `ROUNDS_PER_CYCLE `` (`-DROUNDS_PER_CYCLE=2` với Icarus, `-verilog_define` với Vivado) |
+| `APB_ADDR_WIDTH` | 8 | Hằng số cố định trong RTL (chưa phải `parameter`), đủ cho dải thanh ghi 0x00–0x6C |
+| `APB_DATA_WIDTH` | 32 | Hằng số cố định trong RTL, theo chuẩn APB |
 
 ---
 
@@ -112,12 +112,12 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 |---|---|---|---|
 | `0x00` | `CMD` | W | Thanh ghi lệnh — xem 7.1 |
 | `0x04` | `STATUS` | R | Thanh ghi trạng thái — xem 7.2 |
-| `0x10`–`0x1C` | `KEY0`–`KEY3` | W | Khóa 128 bit. **Chỉ ghi**, đọc trả về 0 |
-| `0x20`–`0x2C` | `NONCE0`–`NONCE3` | W | Nonce 128 bit |
-| `0x30`–`0x3C` | `DIN0`–`DIN3` | W | Khối dữ liệu vào 128 bit |
-| `0x40`–`0x4C` | `DOUT0`–`DOUT3` | R | Khối dữ liệu ra 128 bit |
-| `0x50`–`0x5C` | `TAG0`–`TAG3` | R | Tag do lõi tính ra |
-| `0x60`–`0x6C` | `TAGIN0`–`TAGIN3` | W | Tag nhận được, dùng khi giải mã |
+| `0x10`–`0x1C` | `KEY0`–`KEY3` | W | Khóa 128 bit. **Chỉ ghi**, đọc trả về 0. Ghi khi `busy=1` bị bỏ qua |
+| `0x20`–`0x2C` | `NONCE0`–`NONCE3` | W | Nonce 128 bit. Ghi khi `busy=1` bị bỏ qua |
+| `0x30`–`0x3C` | `DIN0`–`DIN3` | W | Khối dữ liệu vào 128 bit. Được ghi cả khi `busy=1` (nạp trước khối kế tiếp) |
+| `0x40`–`0x4C` | `DOUT0`–`DOUT3` | R | Khối dữ liệu ra 128 bit. Ở khối cuối, các byte từ vị trí `valid_bytes` trở đi luôn đọc 0 |
+| `0x50`–`0x5C` | `TAG0`–`TAG3` | R | Tag do lõi tính ra — **chỉ khi mã hóa**. Khi giải mã luôn đọc 0 (xem 9.5) |
+| `0x60`–`0x6C` | `TAGIN0`–`TAGIN3` | W | Tag nhận được, dùng khi giải mã. Ghi khi `busy=1` bị bỏ qua |
 
 **Quy ước thứ tự từ:** với mọi trường 128 bit, thanh ghi chỉ số 0 chứa 32 bit **có trọng số thấp nhất**. Ví dụ khóa `K` gồm 16 byte `k[0..15]` thì `KEY0 = {k[3],k[2],k[1],k[0]}`.
 
@@ -125,13 +125,15 @@ Tài liệu này đặc tả lõi IP phần cứng thực hiện thuật toán m
 
 | Bit | Tên | Mô tả |
 |---|---|---|
-| `[2:0]` | `opcode` | 0 = NOP · 1 = INIT · 2 = PROC_AD · 3 = PROC_TEXT · 4 = FINAL · 7 = SOFT_RESET |
+| `[2:0]` | `opcode` | 0 = NOP · 1 = INIT · 2 = PROC_AD · 3 = PROC_TEXT · 4 = FINAL · 7 = SOFT_RESET · 5, 6 = dự phòng (bị từ chối) |
 | `[3]` | `last` | 1 = đây là khối cuối của giai đoạn hiện tại |
-| `[4]` | `mode` | 0 = mã hóa · 1 = giải mã |
-| `[12:8]` | `valid_bytes` | Số byte hợp lệ của khối, giá trị 0–16. Chỉ có ý nghĩa khi `last = 1` |
+| `[4]` | `mode` | 0 = mã hóa · 1 = giải mã. Chốt tại `INIT` cho cả phiên; `PROC_AD`/`PROC_TEXT`/`FINAL` phải mang cùng giá trị, khác thì bị từ chối |
+| `[12:8]` | `valid_bytes` | Số byte hợp lệ của khối cuối, giá trị 0–15. Chỉ có ý nghĩa khi `last = 1`; `last = 1` với `valid_bytes ≥ 16` bị từ chối (xem 9.4) |
 | còn lại | — | Dự phòng, ghi 0 |
 
-Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng và tự động xóa cờ `done`.
+Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng và tự động xóa cờ `done`, `dout_valid`, `tag_valid`, `cmd_err`, `din_full` — nếu lệnh được nhận. Lệnh vi phạm các điều kiện ở mục 9.6 bị từ chối bằng `pslverr` và bật `cmd_err`, lõi không khởi động. Ghi `CMD` khi `busy = 1` bị bỏ qua hoàn toàn (không lỗi, không tác dụng).
+
+`SOFT_RESET` kết thúc phiên hiện tại: xóa trạng thái hoán vị, `DOUT`, `TAG`, `DIN`, `TAGIN`, cờ `tag_fail`, và đưa bộ theo dõi thứ tự phiên về "chưa có phiên". `KEY`/`NONCE` được giữ nguyên. `done` bật khi xong.
 
 ### 7.2. Thanh ghi STATUS (0x04, chỉ đọc)
 
@@ -140,9 +142,10 @@ Ghi vào `CMD` với `opcode ≠ 0` sẽ khởi động thao tác tương ứng 
 | `[0]` | `busy` | 1 = lõi đang xử lý, không nhận lệnh mới |
 | `[1]` | `done` | 1 = thao tác vừa rồi đã xong. Cờ dính, xóa khi ghi `CMD` mới |
 | `[2]` | `dout_valid` | 1 = `DOUT` chứa dữ liệu hợp lệ |
-| `[3]` | `tag_valid` | 1 = `TAG` chứa tag hợp lệ (sau `FINAL`) |
-| `[4]` | `tag_fail` | 1 = tag không khớp (chỉ có nghĩa khi giải mã, sau `FINAL`) |
-| `[5]` | `din_full` | 1 = đã nhận đủ 4 từ vào `DIN`, sẵn sàng nhận lệnh xử lý |
+| `[3]` | `tag_valid` | 1 = `TAG` chứa tag hợp lệ (sau `FINAL` khi mã hóa; không bao giờ bật khi giải mã) |
+| `[4]` | `tag_fail` | 1 = tag không khớp (chỉ có nghĩa khi giải mã, sau `FINAL`). Xóa bởi `INIT` và `SOFT_RESET` |
+| `[5]` | `din_full` | 1 = cả 4 từ `DIN0..DIN3` đều đã được ghi kể từ lệnh trước, sẵn sàng nhận lệnh xử lý |
+| `[6]` | `cmd_err` | 1 = lệnh `CMD` gần nhất bị từ chối (mục 9.6). Cờ dính, xóa khi có lệnh được nhận |
 
 ---
 
@@ -177,6 +180,8 @@ Giống hệt trình tự trên với `mode = 1`, thêm hai khác biệt:
 
 - Trước khi ghi `CMD = FINAL`, phải ghi `TAGIN0..TAGIN3` là tag nhận được
 - Sau `FINAL`, kiểm tra `STATUS.tag_fail`. Nếu bằng 1 thì **hủy toàn bộ bản rõ đã đọc ra**
+- Khối bản rõ cuối chỉ xuất hiện ở `DOUT` (với `dout_valid = 1`) sau `FINAL` và chỉ khi tag đúng
+- `TAG0..TAG3` luôn đọc 0 khi giải mã — lõi không bao giờ tiết lộ tag nó tính ra
 
 ### 8.3. Hai trường hợp biên bắt buộc xử lý đúng
 
@@ -199,11 +204,11 @@ Thanh ghi `CMD` dùng trường `opcode` 3 bit thay vì các bit `start`, `is_ad
 
 ### 9.3. Bus 32 bit, khối 128 bit
 
-Mỗi khối cần bốn lần ghi `DIN`. Lõi đếm số từ đã nhận và đặt `STATUS.din_full = 1` khi đủ bốn. Ghi lệnh xử lý khi `din_full = 0` bị bỏ qua và `pslverr` được kích hoạt.
+Mỗi khối cần bốn lần ghi `DIN`. Lõi giữ một mặt nạ 4 bit, mỗi bit đánh dấu một từ `DIN0..DIN3` đã được ghi kể từ lệnh trước, và đặt `STATUS.din_full = 1` khi cả bốn từ đều đã được ghi. Ghi đè cùng một từ nhiều lần không được tính thêm (bản trước 0.2 đếm số lần ghi bằng bộ đếm 3 bit, nên 4 lần ghi cùng một từ cũng làm `din_full = 1`, còn 8 lần ghi thì bộ đếm tràn về 0). Ghi lệnh xử lý khi `din_full = 0` bị từ chối và `pslverr` được kích hoạt.
 
 ### 9.4. Trường `valid_bytes` cho logic đệm
 
-Vì độ dài dữ liệu tùy ý nên khối cuối có thể lẻ byte. Trường `valid_bytes` cho lõi biết chèn byte `0x01` ở vị trí nào. Giá trị 16 nghĩa là khối đầy đủ và khối đệm sẽ là khối tiếp theo — phần mềm chịu trách nhiệm gửi thêm khối đệm đó theo công thức `số khối = ceil((độ dài + 1) / 16)`.
+Vì độ dài dữ liệu tùy ý nên khối cuối có thể lẻ byte. Trường `valid_bytes` cho lõi biết chèn byte `0x01` ở vị trí nào, nên với khối cuối (`last = 1`) nó chỉ nhận 0–15. Các khối đủ 16 byte luôn gửi với `last = 0` (khi đó `valid_bytes` bị bỏ qua). Nếu độ dài dữ liệu là bội số của 16, phần mềm gửi thêm một khối cuối rỗng `last = 1, valid_bytes = 0` để lõi chèn byte đệm — tổng số khối là `ceil((độ dài + 1) / 16)`. Lệnh `last = 1` với `valid_bytes ≥ 16` là lỗi dùng sai (lõi không có chỗ chèn byte đệm, tag sẽ sai chuẩn) nên bị từ chối.
 
 ### 9.5. Hạn chế đã biết — xuất bản rõ trước khi kiểm tra tag
 
@@ -213,8 +218,33 @@ Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra
 
 **Giải pháp áp dụng:**
 - Lõi giữ `DOUT` của **khối cuối cùng** cho tới khi `FINAL` hoàn tất, và chặn hẳn nếu `tag_fail = 1`
-- Với các khối trước đó, trách nhiệm hủy dữ liệu thuộc về phần mềm điều khiển
+- Với các khối trước đó, trách nhiệm hủy dữ liệu thuộc về phần mềm điều khiển — lõi **không** bảo đảm "không lộ bản rõ khi tag sai" cho thông điệp nhiều khối
+- `mode` được chốt tại `INIT` cho cả phiên. Trước bản 0.2, gửi khối cuối (và `FINAL`) với `mode = 0` trong một phiên giải mã sẽ khiến khối cuối được xuất ngay (đường mã hóa không giữ lại) và `tag_fail` luôn bằng 0 — tức vượt qua được cả việc giữ khối cuối lẫn việc kiểm tra tag
+- Khi giải mã, lõi không bao giờ xuất tag nó tính ra (`TAG0..3` đọc 0, `tag_valid = 0`). Nếu xuất, người gửi bản mã giả mạo sẽ đọc được đúng tag hợp lệ cho bản giả mạo đó
+- Khối cuối được giữ trong lõi bị xóa sau `FINAL`, `INIT` và `SOFT_RESET`
 - Yêu cầu này được ghi rõ trong tài liệu tích hợp
+
+### 9.6. Kiểm tra lệnh và thứ tự phiên
+
+Khi `busy = 0`, một lệnh ghi vào `CMD` bị **từ chối** (`pslverr = 1` trong chính pha ACCESS đó, `STATUS.cmd_err = 1`, lõi không khởi động, các cờ khác giữ nguyên) nếu:
+
+| Điều kiện | Lý do |
+|---|---|
+| `opcode` = 5 hoặc 6 | Mã dự phòng — trước đây được nhận nhưng không bao giờ báo `done` |
+| `PROC_AD`/`PROC_TEXT` khi `din_full = 0` | Khối chưa đủ 4 từ (9.3) |
+| `PROC_AD`/`PROC_TEXT` với `last = 1` và `valid_bytes ≥ 16` | Không có chỗ chèn byte đệm (9.4) |
+| Sai thứ tự phiên | Xem sơ đồ dưới |
+| `PROC_AD`/`PROC_TEXT`/`FINAL` có bit `mode` khác `mode` của `INIT` | Chặn việc đổi chế độ giữa phiên (9.5) |
+
+Thứ tự phiên hợp lệ:
+
+```
+(không có phiên) --INIT--> READY --PROC_AD(last=0)--> AD --PROC_AD(last=1)--> AD_DONE
+READY / AD_DONE / PT --PROC_TEXT(last=0)--> PT --PROC_TEXT(last=1)--> PT_DONE --FINAL--> (không có phiên)
+READY --PROC_AD(last=1)--> AD_DONE ;  READY --PROC_TEXT(last=1)--> PT_DONE
+```
+
+`INIT` được nhận ở mọi trạng thái (bắt đầu lại phiên mới), `SOFT_RESET` được nhận ở mọi trạng thái (về "không có phiên"), `NOP` không làm gì và không lỗi. Reset phần cứng (`presetn`) đưa mọi thứ về "không có phiên".
 
 Đây là cách các IP AEAD thương mại xử lý, và là một điểm đáng thảo luận trong báo cáo.
 
@@ -261,4 +291,5 @@ Ascon là thuật toán **online**: khối bản mã thứ *i* được tạo ra
 
 | Phiên bản | Ngày | Nội dung |
 |---|---|---|
-| 0.1 | *điền ngày* | Bản nháp đầu tiên |
+| 0.1 | 2026-09-02 | Bản nháp đầu tiên |
+| 0.2 | 2026-09-27 | `TAG` không xuất khi giải mã; `mode` chốt tại `INIT`; `tag_fail` xóa khi `INIT`/`SOFT_RESET`; `din_full` dùng mặt nạ 4 từ; kiểm tra lệnh + thứ tự phiên + `STATUS.cmd_err` (9.6); khóa ghi `KEY`/`NONCE`/`TAGIN` khi `busy`; che byte thừa của `DOUT` ở khối cuối; `SOFT_RESET` xóa dữ liệu phiên |

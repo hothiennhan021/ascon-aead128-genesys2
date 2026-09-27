@@ -20,6 +20,9 @@
 //      final PROC_TEXT block's DOUT (neither at the block's own
 //      PROC_TEXT command nor, on failure, after FINAL) -- per
 //      docs/spec.md 9.5.
+//   6. mode_lock: a decrypt session whose last block/FINAL are issued
+//      with mode=0 must still behave as decrypt (mode is latched at
+//      INIT), so the last block is not released early.
 
 `timescale 1ns/1ps
 
@@ -201,6 +204,11 @@ module tb_aead;
     //               1 = flip 1 bit in the first CT block fed as din
     //               2 = flip 1 bit in tag_in
     //               3 = flip 1 bit in the first AD block fed as din
+    //               4 = no corruption, but the last PROC_TEXT and FINAL
+    //                   are issued with mode=0 inside a decrypt session:
+    //                   the core must keep using the mode latched by INIT
+    //                   (hold the last block, release it only after a
+    //                   good tag) -- see docs/BUGS.md, mode switch
     // The flipped bit is always bit 0 of block index 0: for a
     // single-block phase valid_bytes >= 1 so byte 0 is always real
     // data, and for a multi-block phase block 0 is never the last
@@ -257,7 +265,8 @@ module tb_aead;
                 if (corrupt_kind == 1 && dec_j == 0)
                     dec_din = dec_din ^ 128'h1;
 
-                issue_cmd(OP_PROC_TEXT, dec_last, dec_vb, dec_din, 1'b1);
+                issue_cmd(OP_PROC_TEXT, dec_last, dec_vb, dec_din,
+                           (corrupt_kind == 4 && dec_last) ? 1'b0 : 1'b1);
 
                 if (dec_last) begin
                     dec_last_proc_revealed = captured_dout_seen;
@@ -276,7 +285,7 @@ module tb_aead;
             end
 
             tag_in_r = dec_tag_in;
-            issue_cmd(OP_FINAL, 1'b0, 5'd0, 128'h0, 1'b1);
+            issue_cmd(OP_FINAL, 1'b0, 5'd0, 128'h0, (corrupt_kind == 4) ? 1'b0 : 1'b1);
 
             dec_tag_fail       = tag_fail_o;
             dec_final_revealed = captured_dout_seen;
@@ -299,6 +308,7 @@ module tb_aead;
     integer ctflip_tested, ctflip_pass, ctflip_first_fail;
     integer tagflip_tested, tagflip_pass, tagflip_first_fail;
     integer adflip_tested, adflip_pass, adflip_first_fail;
+    integer modelock_tested, modelock_pass;
 
     localparam NEG_STRIDE = 19; // ~58 vectors, well over the required 50,
                                 // spread across the full AD/PT length range
@@ -329,6 +339,7 @@ module tb_aead;
         ctflip_tested = 0; ctflip_pass = 0; ctflip_first_fail = -1;
         tagflip_tested = 0; tagflip_pass = 0; tagflip_first_fail = -1;
         adflip_tested = 0; adflip_pass = 0; adflip_first_fail = -1;
+        modelock_tested = 0; modelock_pass = 0;
 
         @(negedge clk);
         @(negedge clk);
@@ -393,6 +404,18 @@ module tb_aead;
                           dec_tag_fail, dec_last_proc_revealed, dec_final_revealed, dec_mismatch);
             end
 
+            if (pt_len > 0) begin
+                modelock_tested = modelock_tested + 1;
+                do_decrypt(vec, 4);
+                if (!dec_tag_fail && !dec_last_proc_revealed && dec_final_revealed &&
+                    dec_final_pt_ok && !dec_mismatch)
+                    modelock_pass = modelock_pass + 1;
+                else
+                    $display("FAIL mode_lock Count=%0d AD_len=%0d PT_len=%0d tag_fail=%0d last_proc_revealed=%0d final_revealed=%0d",
+                              count, ad_len, pt_len,
+                              dec_tag_fail, dec_last_proc_revealed, dec_final_revealed);
+            end
+
             if (ad_len > 0) begin
                 adflip_tested = adflip_tested + 1;
                 do_decrypt(vec, 3);
@@ -410,11 +433,13 @@ module tb_aead;
         $display("PASSED ct_flip %0d/%0d (min 50 required)", ctflip_pass, ctflip_tested);
         $display("PASSED tag_flip %0d/%0d", tagflip_pass, tagflip_tested);
         $display("PASSED ad_flip %0d/%0d", adflip_pass, adflip_tested);
+        $display("PASSED mode_lock %0d/%0d", modelock_pass, modelock_tested);
 
         if (errors == 0 && dec_errors == 0 &&
             ctflip_pass == ctflip_tested && ctflip_tested >= 50 &&
             tagflip_pass == tagflip_tested &&
-            adflip_pass == adflip_tested)
+            adflip_pass == adflip_tested &&
+            modelock_pass == modelock_tested)
             $display("PASSED ALL");
         else
             $display("FAILED (see FAIL lines above)");

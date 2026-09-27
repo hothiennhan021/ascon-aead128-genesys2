@@ -88,8 +88,12 @@ module tb_gatesim;
             pwdata  = data;
             @(negedge pclk);
             penable = 1'b1;
-            @(negedge pclk);
+            // sample pslverr at the edge that completes ACCESS, as a
+            // real APB master does (not half a cycle later, when the
+            // slave may already have reacted to this very transfer)
+            @(posedge pclk);
             last_pslverr_capture = pslverr;
+            @(negedge pclk);
             psel    = 1'b0;
             penable = 1'b0;
             pwrite  = 1'b0;
@@ -107,8 +111,9 @@ module tb_gatesim;
             paddr   = addr;
             @(negedge pclk);
             penable = 1'b1;
-            @(negedge pclk);
+            @(posedge pclk);
             data = prdata;
+            @(negedge pclk);
             psel    = 1'b0;
             penable = 1'b0;
         end

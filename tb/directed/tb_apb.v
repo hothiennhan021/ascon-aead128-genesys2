@@ -23,6 +23,10 @@
 //     encryption must still produce a correct result
 //   - two full encryptions run back-to-back with no reset between
 //     them: second must not inherit any state from the first
+//
+// Decrypt, TAGIN, SOFT_RESET and the command checks are exercised
+// through the bus by tb/directed/tb_apb_session.v. The BFM below
+// samples pslverr/prdata on the edge that completes ACCESS.
 
 `timescale 1ns/1ps
 
@@ -77,6 +81,7 @@ module tb_apb;
         .pwdata          (pwdata),
         .prdata          (prdata),
         .pready          (pready),
+        .pslverr         (pslverr),
         .violation_count (apb_checker_violations)
     );
 
@@ -96,8 +101,12 @@ module tb_apb;
             pwdata  = data;
             @(negedge pclk);
             penable = 1'b1;
-            @(negedge pclk);
+            // sample pslverr at the edge that completes ACCESS, as a
+            // real APB master does (not half a cycle later, when the
+            // slave may already have reacted to this very transfer)
+            @(posedge pclk);
             last_pslverr_capture = pslverr;
+            @(negedge pclk);
             psel    = 1'b0;
             penable = 1'b0;
             pwrite  = 1'b0;
@@ -115,8 +124,9 @@ module tb_apb;
             paddr   = addr;
             @(negedge pclk);
             penable = 1'b1;
-            @(negedge pclk);
+            @(posedge pclk);
             data = prdata;
+            @(negedge pclk);
             psel    = 1'b0;
             penable = 1'b0;
         end
@@ -533,7 +543,7 @@ module tb_apb;
 
         u_apb_checker.report_summary;
         if (apb_checker_violations == 0)
-            $display("PASSED apb_protocol_checker 0/0");
+            $display("PASSED apb_protocol_checker (0 violations)");
         else
             $display("FAIL apb_protocol_checker %0d violation(s)", apb_checker_violations);
 
