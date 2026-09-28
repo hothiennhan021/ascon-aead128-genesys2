@@ -50,6 +50,13 @@
 #   ns; RPC=4: toi ~0.8-1.0 ns) nen vong lap mo rong thay vi mot buoc
 #   nhay co dinh.
 #
+#   Buoc mo rong xuong: neu chu ky MIN NHO NHAT (round-0.2) van PASS thi
+#   Fmax that con cao hon diem nay -- giam tiep 0.1 ns/lan (toi da 2.0 ns)
+#   cho toi khi gap 2 lan FAIL lien tiep. Dung 2 lan chu khong phai 1 vi
+#   ket qua place/route dao dong giua cac lan chay (cung mot thiet ke co
+#   the FAIL o X ns nhung PASS o X-0.1 ns). Truoc day script chi mo rong
+#   len, nen khi ca 4 diem MIN deu PASS thi Fmax bao cao chi la can duoi.
+#
 #   CHI giai doan MIN (ke ca cac chu ky du phong mo rong) moi duoc chot
 #   lam ket qua cuoi (giai doan THO khong route_design nen khong co so
 #   that de chot). Luu post_route_rpc<N>.dcp cho chu ky NHO NHAT van
@@ -165,6 +172,27 @@ if {$best_period eq ""} {
     }
     if {$best_period eq ""} {
         puts "=== Van khong PASS sau khi mo rong toi +2.0 ns -- kien truc nay can xem lai luoi THO ==="
+    }
+}
+
+# ---- mo rong xuong khi diem MIN nho nhat van PASS ---------------------
+set lowest_fine [expr {$rounded_center - 0.2}]
+if {$best_period ne "" && abs($best_period - $lowest_fine) < 1e-6} {
+    puts [format "=== Chu ky MIN nho nhat (%.1f ns) van PASS -- giam dan 0.1 ns/lan de tim Fmax that ===" \
+        $lowest_fine]
+    set consecutive_fail 0
+    for {set k 3} {$k <= 22 && $consecutive_fail < 2} {incr k} {
+        set p [expr {round(($rounded_center - $k / 10.0) * 10) / 10.0}]
+        if {$p < 1.0} {
+            break
+        }
+        set w [run_fine_period $p $post_synth_dcp $post_route_dcp \
+            $clock_name $clock_port results best_period]
+        if {$w < 0} {
+            incr consecutive_fail
+        } else {
+            set consecutive_fail 0
+        }
     }
 }
 
